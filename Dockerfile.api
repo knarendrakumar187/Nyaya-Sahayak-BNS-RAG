@@ -1,4 +1,5 @@
-# API-only image for Render Free (frontend lives on Vercel)
+# API-only image for Render Free (frontend on Vercel)
+# Uses CPU-only PyTorch so we don't pull huge CUDA wheels (OOM on 512 MB).
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -8,10 +9,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# 1) CPU torch first (blocks CUDA nvidia-* packages)
+# 2) Then the rest of the app deps
+RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir -r requirements.txt
 
 COPY backend ./backend
 COPY data ./data
+COPY scripts/start_api.sh ./scripts/start_api.sh
+RUN chmod +x ./scripts/start_api.sh
 
 ENV PYTHONUNBUFFERED=1
 ENV SERVE_FRONTEND=false
@@ -21,10 +29,8 @@ ENV OMP_NUM_THREADS=1
 ENV MKL_NUM_THREADS=1
 ENV OPENBLAS_NUM_THREADS=1
 ENV HF_HOME=/tmp/hf
+ENV TRANSFORMERS_CACHE=/tmp/hf
 
-EXPOSE 8000
+EXPOSE 10000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=5 \
-  CMD python -c "import os,urllib.request; p=os.environ.get('PORT','8000'); urllib.request.urlopen(f'http://127.0.0.1:{p}/api/health')"
-
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
+CMD ["./scripts/start_api.sh"]

@@ -43,17 +43,24 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    """Bind the HTTP port first; warm FAISS/embeddings in the background."""
+    import threading
+
     settings = get_settings()
     settings.raw_dir.mkdir(parents=True, exist_ok=True)
     settings.processed_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        if settings.index_path.exists():
-            load_index(settings)
-            logger.info("FAISS index warmed")
-        else:
-            logger.info("No FAISS index yet — user must Rebuild index")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Index warm skipped: %s", exc)
+
+    def _warm() -> None:
+        try:
+            if settings.index_path.exists():
+                load_index(settings)
+                logger.info("FAISS index warmed")
+            else:
+                logger.info("No FAISS index yet — user must Rebuild index")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Index warm skipped: %s", exc)
+
+    threading.Thread(target=_warm, daemon=True).start()
     yield
 
 
