@@ -254,6 +254,66 @@ async def upload_pdf(
     return result
 
 
+class UploadInitRequest(BaseModel):
+    filename: str = Field(..., min_length=5, max_length=200)
+    size_bytes: int = Field(..., gt=0, le=MAX_UPLOAD_BYTES)
+
+
+class UploadChunkRequest(BaseModel):
+    upload_id: str = Field(..., min_length=36, max_length=36)
+    index: int = Field(..., ge=0, le=5000)
+    data_b64: str = Field(..., min_length=1, max_length=900_000)
+
+
+class UploadCompleteRequest(BaseModel):
+    upload_id: str = Field(..., min_length=36, max_length=36)
+
+
+@app.post("/api/upload/init")
+@limiter.limit("20/minute")
+def upload_init(request: Request, body: UploadInitRequest, _: None = Depends(require_api_key)):
+    from backend.upload_chunks import init_upload
+
+    try:
+        return init_upload(body.filename, body.size_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/upload/chunk")
+@limiter.limit("120/minute")
+def upload_chunk(request: Request, body: UploadChunkRequest, _: None = Depends(require_api_key)):
+    import base64
+
+    from backend.upload_chunks import save_chunk
+
+    try:
+        raw = base64.b64decode(body.data_b64, validate=False)
+        return save_chunk(body.upload_id, body.index, raw)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Chunk failed: {exc}") from exc
+
+
+@app.post("/api/upload/complete")
+@limiter.limit("20/minute")
+def upload_complete(
+    request: Request,
+    body: UploadCompleteRequest,
+    _: None = Depends(require_api_key),
+):
+    from backend.upload_chunks import complete_upload
+
+    settings = get_settings()
+    try:
+        return complete_upload(body.upload_id, settings.raw_dir)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/ask")
 @limiter.limit(_DEFAULT_LIMIT)
 def ask_question(request: Request, body: AskRequest):

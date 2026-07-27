@@ -10,7 +10,7 @@ import {
   lookupSection,
   runEval,
   startIngestJob,
-  uploadPdf,
+  uploadPdfChunked,
   wakeApi,
 } from './api'
 import { AnswerBody } from './AnswerBody'
@@ -234,14 +234,20 @@ function App() {
     setError(null)
     try {
       await wakeApi(6, 10000)
-      setIngestPct(20)
+      setIngestPct(15)
       const results = []
       for (const file of pdfs) {
-        setIngestMsg(`Uploading ${file.name}…`)
-        results.push(await uploadPdf(file, false))
+        results.push(
+          await uploadPdfChunked(file, {
+            onProgress: ({ pct, message }) => {
+              setIngestPct(Math.min(70, 15 + Math.round(pct * 0.55)))
+              setIngestMsg(message)
+            },
+          }),
+        )
       }
       await refreshDocs()
-      setIngestPct(35)
+      setIngestPct(75)
       setIngestMsg('Indexing PDF (first ~30 pages on Free)…')
       const { job_id } = await startIngestJob()
       const meta = await pollIngest(job_id)

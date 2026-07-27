@@ -74,6 +74,58 @@ export async function uploadPdf(file, rebuildIndex = true) {
   return res.json()
 }
 
+function bytesToBase64(bytes) {
+  let binary = ''
+  const step = 0x8000
+  for (let i = 0; i < bytes.length; i += step) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + step))
+  }
+  return btoa(binary)
+}
+
+/**
+ * Chunked upload for Render Free (avoids single large multipart timeout).
+ * onProgress({ pct, message })
+ */
+export async function uploadPdfChunked(file, { onProgress } = {}) {
+  const report = (pct, message) => onProgress?.({ pct, message })
+  report(5, 'Starting chunked upload…')
+
+  const initRes = await fetch(apiUrl('/api/upload/init'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ filename: file.name, size_bytes: file.size }),
+  })
+  if (!initRes.ok) throw new Error(await parseError(initRes))
+  const { upload_id } = await initRes.json()
+
+  const buf = new Uint8Array(await file.arrayBuffer())
+  const chunkSize = 200 * 1024 // 200 KB JSON-friendly chunks
+  const total = Math.ceil(buf.length / chunkSize) || 1
+
+  for (let i = 0; i < total; i++) {
+    const slice = buf.subarray(i * chunkSize, (i + 1) * chunkSize)
+    const data_b64 = bytesToBase64(slice)
+    const chunkRes = await fetch(apiUrl('/api/upload/chunk'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ upload_id, index: i, data_b64 }),
+    })
+    if (!chunkRes.ok) throw new Error(await parseError(chunkRes))
+    report(10 + Math.round((80 * (i + 1)) / total), `Uploading chunk ${i + 1}/${total}…`)
+  }
+
+  report(92, 'Finalizing PDF…')
+  const doneRes = await fetch(apiUrl('/api/upload/complete'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ upload_id }),
+  })
+  if (!doneRes.ok) throw new Error(await parseError(doneRes))
+  report(100, 'Upload complete')
+  return doneRes.json()
+}
+
 export async function ingestCorpus() {
   const res = await fetch(apiUrl('/api/ingest'), {
     method: 'POST',
