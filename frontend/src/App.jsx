@@ -81,7 +81,6 @@ function App() {
   const [showHow, setShowHow] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
   const [toast, setToast] = useState(null)
-  const [language, setLanguage] = useState('en')
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('nyaya_api_key') || '')
   const [evalData, setEvalData] = useState(null)
   const [evalLoading, setEvalLoading] = useState(false)
@@ -374,7 +373,6 @@ function App() {
 
         const history = historyForAsk([...messages, userMsg])
         const final = await askQuestionStream(q, {
-          language,
           history,
           hybrid: true,
           onToken: (text) => {
@@ -757,27 +755,6 @@ function App() {
                 ))}
               </div>
               <div className="toolbar-actions">
-                {mode === 'ask' && (
-                  <div className="lang-toggle" role="group" aria-label="Answer language">
-                    <span className="lang-label">Answer</span>
-                    <div className="lang-pills">
-                      <button
-                        type="button"
-                        className={language === 'en' ? 'active' : ''}
-                        onClick={() => setLanguage('en')}
-                      >
-                        English
-                      </button>
-                      <button
-                        type="button"
-                        className={language === 'hi' ? 'active' : ''}
-                        onClick={() => setLanguage('hi')}
-                      >
-                        हिंदी
-                      </button>
-                    </div>
-                  </div>
-                )}
                 <button
                   type="button"
                   className="tool-btn ghost"
@@ -974,9 +951,7 @@ function App() {
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={
                   mode === 'ask'
-                    ? language === 'hi'
-                      ? 'BNS के बारे में हिंदी में पूछें…'
-                      : 'Ask about BNS punishment, offence, or procedure…'
+                    ? 'Ask about BNS punishment, offence, or procedure…'
                     : mode === 'compare'
                       ? 'Enter IPC/BNS section or offence name…'
                       : 'Enter section number, e.g. 103'
