@@ -164,7 +164,7 @@ function App() {
       const msg =
         meta?.corpus_mode === 'pdf'
           ? `Index ready from ${files} — ${meta.num_chunks} searchable chunks (corpus ${meta.corpus_version || 'n/a'}).`
-          : `Demo index ready — ${meta?.num_chunks} chunks. Upload a BNS PDF for real answers.`
+          : `Sample index ready — ${meta?.num_chunks} chunks. You can Ask without uploading a PDF.`
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: msg }])
       showToast(`Index built successfully (${meta?.num_chunks} chunks)`, 'ok')
       await refreshHealth()
@@ -813,7 +813,7 @@ function App() {
                         : 'Find a section by number'}
                   </strong>
                   {mode === 'ask'
-                    ? 'Tip: the 4 interview chips use a fast FAQ path (work without a PDF). For PDF-grounded answers, upload BNS.pdf then Rebuild — or ask something like “rash driving punishment”.'
+                    ? 'Tip: try a chip above, or ask anything about BNS — answers work from the built-in sample text (no PDF needed).'
                     : mode === 'compare'
                       ? 'Try 302, 420, 419, or 498A'
                       : 'Try 103 (murder), 281 (rash driving), or 318 (cheating)'}
@@ -976,7 +976,7 @@ function App() {
             ? `Grounded on uploaded PDF(s): ${sourceFiles.join(', ') || 'data/raw'}${
                 corpusVersion ? ` · version ${corpusVersion}` : ''
               }. Not legal advice.`
-            : 'Using built-in sample BNS text (not a full Gazette PDF). Not legal advice.'}
+            : 'Using built-in sample BNS text — no PDF required. Not legal advice.'}
         </p>
       </div>
     </div>
