@@ -813,7 +813,7 @@ function App() {
                         : 'Find a section by number'}
                   </strong>
                   {mode === 'ask'
-                    ? 'Tip: try a chip above, or ask anything about BNS — answers work from the built-in sample text (no PDF needed).'
+                    ? 'Tip: try a chip above, or ask about BNS. For grounded answers, upload a BNS PDF and Rebuild.'
                     : mode === 'compare'
                       ? 'Try 302, 420, 419, or 498A'
                       : 'Try 103 (murder), 281 (rash driving), or 318 (cheating)'}
