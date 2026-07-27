@@ -1,5 +1,9 @@
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 
+export function getApiBase() {
+  return API_BASE || '(same origin — set VITE_API_BASE_URL on Vercel to your Render URL)'
+}
+
 function apiUrl(path) {
   return `${API_BASE}${path}`
 }

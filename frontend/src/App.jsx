@@ -3,6 +3,7 @@ import {
   askQuestionStream,
   compareLaws,
   deleteDocument,
+  getApiBase,
   getHealth,
   getIngestStatus,
   listDocuments,
@@ -281,7 +282,7 @@ function App() {
       const raw = err instanceof Error ? err.message : 'Upload failed'
       const message =
         raw === 'Failed to fetch' || /network|fetch/i.test(raw)
-          ? 'Cannot reach Render API. Open https://nyaya-sahayak-api.onrender.com/api/health , wait until it loads, then retry. Skip large PDF uploads on Free — use the sample index.'
+          ? `Cannot reach API at ${getApiBase()}. Open https://nyaya-sahayak-api.onrender.com/api/health first (wakes Render). Then use Ask — sample index is already built; skip PDF upload on Free.`
           : raw
       setError(message)
       showToast(message, 'error')
@@ -618,13 +619,13 @@ function App() {
                 {ingesting ? `Building… ${ingestPct}%` : 'Rebuild index'}
               </button>
               <p className="upload-hint">
-                <strong>Render Free tip:</strong> skip big Gazette PDFs (they time out). Redeploy the API so
-                the sample index is baked in, confirm <code>index_ready: true</code> on health, then use Ask.
-                Only upload PDFs under ~8 MB.
+                <strong>Render Free:</strong> your sample index is already live — skip PDF upload.
+                Use <strong>Ask</strong> instead. Large Gazette uploads usually time out on Free.
+                API: <code>{getApiBase()}</code>
                 {corpusVersion ? (
                   <>
                     {' '}
-                    Corpus version: <code>{corpusVersion}</code>
+                    · corpus <code>{corpusVersion}</code>
                   </>
                 ) : null}
               </p>
@@ -813,7 +814,7 @@ function App() {
                         : 'Find a section by number'}
                   </strong>
                   {mode === 'ask'
-                    ? 'Tip: try a chip above, or ask about BNS. For grounded answers, upload a BNS PDF and Rebuild.'
+                    ? 'Tip: try a chip above, or ask about BNS. Sample index is ready — no PDF upload required on Free.'
                     : mode === 'compare'
                       ? 'Try 302, 420, 419, or 498A'
                       : 'Try 103 (murder), 281 (rash driving), or 318 (cheating)'}
