@@ -6,6 +6,7 @@ import {
   getApiBase,
   getHealth,
   getIngestStatus,
+  getRenderHealthUrl,
   listDocuments,
   lookupSection,
   runEval,
@@ -83,6 +84,7 @@ function App() {
   const [copiedId, setCopiedId] = useState(null)
   const [toast, setToast] = useState(null)
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('nyaya_api_key') || '')
+  const [apiOnline, setApiOnline] = useState(null) // null | true | false
   const [evalData, setEvalData] = useState(null)
   const [evalLoading, setEvalLoading] = useState(false)
   const fileInputRef = useRef(null)
@@ -116,14 +118,51 @@ function App() {
       setSourceFiles(h.source_files ?? [])
       setCorpusVersion(h.corpus_version ?? null)
       setAuthRequired(Boolean(h.auth_required))
+      setApiOnline(true)
     } catch {
       setIndexReady(false)
+      setApiOnline(false)
+    }
+  }
+
+  async function testApiConnection() {
+    setError(null)
+    setIngestMsg('Testing API connection…')
+    try {
+      const h = await wakeApi()
+      setApiOnline(true)
+      setIndexReady(Boolean(h.index_ready))
+      setCorpusMode(h.corpus_mode ?? null)
+      setSourceFiles(h.source_files ?? [])
+      setCorpusVersion(h.corpus_version ?? null)
+      showToast(
+        h.index_ready
+          ? `API connected · index ready (${h.corpus_mode || 'unknown'})`
+          : 'API connected · index not built yet',
+        'ok',
+      )
+      await refreshHealth()
+    } catch (err) {
+      setApiOnline(false)
+      const message = err instanceof Error ? err.message : 'Connection failed'
+      setError(message)
+      showToast(message, 'error')
+    } finally {
+      setIngestMsg('')
     }
   }
 
   useEffect(() => {
-    void refreshHealth()
-    void refreshDocs()
+    void (async () => {
+      try {
+        await wakeApi(4, 4000)
+        await refreshHealth()
+        await refreshDocs()
+      } catch {
+        setApiOnline(false)
+        await refreshDocs()
+      }
+    })()
   }, [])
 
   useEffect(() => {
@@ -552,6 +591,20 @@ function App() {
 
         {mode === 'upload' ? (
           <section className="panel upload-panel">
+            <div className={`api-status ${apiOnline === true ? 'ok' : apiOnline === false ? 'bad' : ''}`}>
+              <span>
+                API:{' '}
+                {apiOnline === true ? 'Connected' : apiOnline === false ? 'Offline / waking' : 'Checking…'}
+              </span>
+              <div className="api-status-actions">
+                <a href={getRenderHealthUrl()} target="_blank" rel="noreferrer">
+                  Open health
+                </a>
+                <button type="button" className="action-btn" onClick={() => void testApiConnection()}>
+                  Test connection
+                </button>
+              </div>
+            </div>
             {(authRequired || apiKey) && (
               <div className="api-key-row">
                 <label htmlFor="api-key">X-API-Key (required when server has API_KEY set)</label>

@@ -7,6 +7,10 @@ export function getApiBase() {
   return API_BASE
 }
 
+export function getRenderHealthUrl() {
+  return `${RENDER_API}/api/health`
+}
+
 function apiUrl(path) {
   return `${API_BASE}${path}`
 }
@@ -27,16 +31,29 @@ async function parseError(res) {
   }
 }
 
+async function fetchWithTimeout(url, options = {}, ms = 90000) {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ms)
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal, mode: 'cors', credentials: 'omit' })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function apiFetch(path, options = {}) {
   try {
-    return await fetch(apiUrl(path), {
-      ...options,
-      mode: 'cors',
-      credentials: 'omit',
-    })
+    return await fetchWithTimeout(apiUrl(path), options)
   } catch (err) {
+    const name = err instanceof Error ? err.name : ''
+    const msg = err instanceof Error ? err.message : 'network error'
+    if (name === 'AbortError') {
+      throw new Error(
+        `Request timed out talking to ${API_BASE}. Render Free may still be starting — open ${RENDER_API}/api/health, wait for JSON, then retry.`,
+      )
+    }
     throw new Error(
-      `Cannot reach ${API_BASE}. Open ${RENDER_API}/api/health in a new tab to wake Render, wait for JSON, then retry. (${err instanceof Error ? err.message : 'network error'})`,
+      `Cannot reach ${API_BASE}. Open ${RENDER_API}/api/health in a new tab, wait for JSON, come back and retry. (${msg})`,
     )
   }
 }
@@ -47,12 +64,12 @@ export async function getHealth() {
   return res.json()
 }
 
-/** Wake Render Free directly (can take up to ~90s when asleep). */
-export async function wakeApi(attempts = 12, delayMs = 8000) {
+/** Wake Render Free directly (can take up to ~2 min when asleep). */
+export async function wakeApi(attempts = 15, delayMs = 8000) {
   let lastErr = new Error('API unreachable')
   for (let i = 0; i < attempts; i++) {
     try {
-      const res = await fetch(`${RENDER_API}/api/health`, { mode: 'cors', credentials: 'omit' })
+      const res = await fetchWithTimeout(`${RENDER_API}/api/health`, {}, 90000)
       if (!res.ok) throw new Error(await parseError(res))
       return res.json()
     } catch (err) {
