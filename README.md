@@ -2,7 +2,7 @@
 
 **RAG bot for Bharatiya Nyaya Sanhita (BNS)** — ask questions about India’s new criminal laws, grounded in retrieved text, plus an **IPC ↔ BNS Compare** feature for your resume.
 
-Stack: **React (Vite) + FastAPI + LangChain + FAISS + Gemini/OpenAI**
+Stack: **React (Vite + JavaScript) + FastAPI + LangChain + FAISS + Gemini/OpenAI**
 
 ---
 
@@ -63,13 +63,22 @@ backend/           FastAPI + RAG pipeline
   ingest.py        PDF/text → chunks → FAISS
   rag.py           retrieve + generate
   compare.py       IPC↔BNS mapping
-frontend/          React + TypeScript UI
+frontend/          React + JavaScript UI (Vite)
 data/sample/       Demo BNS excerpts (works offline without PDFs)
 data/mappings/     Curated IPC→BNS table
 data/raw/          Drop official PDFs here
 ```
 
 ---
+
+## Features
+
+- **Ask (RAG)** — grounded answers from uploaded BNS PDF with citations + L2 confidence  
+- **Compare** — IPC → BNS mappings (e.g. 302 → 103)  
+- **Sections** — direct lexical lookup by section number  
+- **Upload PDF** — ingest official Gazette PDFs and rebuild FAISS  
+- **How RAG works** — pipeline explainer for demos/interviews  
+- **Follow-ups + Copy** — continue the conversation and export answers  
 
 ## API
 
@@ -81,6 +90,7 @@ data/raw/          Drop official PDFs here
 | POST   | `/api/ingest`    | Build FAISS index                            |
 | POST   | `/api/ask`       | `{ "question": "..." }` RAG Q&A              |
 | POST   | `/api/compare`   | `{ "query": "302" }` mappings                |
+| POST   | `/api/section`   | `{ "section": "281" }` lexical section find  |
 
 Docs: http://localhost:8000/docs
 

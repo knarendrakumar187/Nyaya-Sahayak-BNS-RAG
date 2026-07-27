@@ -18,6 +18,7 @@ from backend.compare import compare
 from backend.config import get_settings
 from backend.ingest import build_index, read_index_meta
 from backend.rag import ask
+from backend.sections import find_section
 
 MAX_UPLOAD_BYTES = 40 * 1024 * 1024  # 40 MB
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
@@ -44,6 +45,10 @@ class AskRequest(BaseModel):
 
 class CompareRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=500)
+
+
+class SectionRequest(BaseModel):
+    section: str = Field(..., min_length=1, max_length=20)
 
 
 @app.get("/api/health")
@@ -170,3 +175,17 @@ def compare_laws(body: CompareRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Compare failed: {exc}") from exc
+
+
+@app.post("/api/section")
+def section_lookup(body: SectionRequest):
+    """Lexical lookup for a BNS section number inside the indexed PDF chunks."""
+    settings = get_settings()
+    try:
+        return find_section(body.section, settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Section lookup failed: {exc}") from exc

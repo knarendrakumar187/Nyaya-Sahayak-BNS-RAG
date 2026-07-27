@@ -1,57 +1,58 @@
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   askQuestion,
   compareLaws,
   getHealth,
   ingestCorpus,
   listDocuments,
+  lookupSection,
   uploadPdf,
-  type CompareResponse,
-  type DocumentInfo,
-  type Source,
 } from './api'
+import { AnswerBody } from './AnswerBody'
 import './App.css'
-
-type Mode = 'ask' | 'compare' | 'upload'
-
-type ChatMessage = {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  sources?: Source[]
-  mappings?: CompareResponse['mappings']
-}
 
 const ASK_HINTS = [
   'Punishment for murder under BNS?',
-  'What replaced IPC 420?',
+  'What is cheating under BNS?',
+  'Rash driving on a public way — which BNS section?',
   'Hit-and-run: which BNS sections apply?',
 ]
 
 const COMPARE_HINTS = ['302', '498A', 'cheating', 'sedition']
+const SECTION_HINTS = ['103', '106', '281', '318', '85']
 
-function formatBytes(n: number) {
+const PIPELINE_STEPS = [
+  { id: 'query_expansion', label: 'Expand query' },
+  { id: 'multi_query_faiss', label: 'FAISS search' },
+  { id: 'keyword_boost', label: 'Keyword boost' },
+  { id: 'prompt_with_context', label: 'Ground prompt' },
+  { id: 'llm_generate', label: 'Generate answer' },
+]
+
+function formatBytes(n) {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function App() {
-  const [mode, setMode] = useState<Mode>('ask')
+  const [mode, setMode] = useState('ask')
   const [input, setInput] = useState('')
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
   const [ingesting, setIngesting] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState(null)
   const [indexReady, setIndexReady] = useState(false)
   const [provider, setProvider] = useState('gemini')
-  const [corpusMode, setCorpusMode] = useState<string | null>(null)
-  const [sourceFiles, setSourceFiles] = useState<string[]>([])
-  const [documents, setDocuments] = useState<DocumentInfo[]>([])
+  const [corpusMode, setCorpusMode] = useState(null)
+  const [sourceFiles, setSourceFiles] = useState([])
+  const [documents, setDocuments] = useState([])
   const [dragOver, setDragOver] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const [showHow, setShowHow] = useState(false)
+  const [copiedId, setCopiedId] = useState(null)
+  const fileInputRef = useRef(null)
+  const bottomRef = useRef(null)
 
   async function refreshDocs() {
     try {
@@ -114,7 +115,7 @@ function App() {
     }
   }
 
-  async function handleFiles(files: FileList | File[] | null) {
+  async function handleFiles(files) {
     if (!files || files.length === 0) return
     const pdfs = Array.from(files).filter((f) => f.name.toLowerCase().endsWith('.pdf'))
     if (pdfs.length === 0) {
@@ -154,9 +155,55 @@ function App() {
     }
   }
 
-  async function submit(question: string) {
+  async function copyMessage(m) {
+    const parts = [m.content]
+    if (m.sources?.length) {
+      parts.push('\n\nSources:')
+      for (const s of m.sources) {
+        parts.push(
+          `- ${s.source_name || 'Source'}${s.page != null ? ` p.${s.page + 1}` : ''}: ${s.excerpt}`,
+        )
+      }
+    }
+    await navigator.clipboard.writeText(parts.join('\n'))
+    setCopiedId(m.id)
+    window.setTimeout(() => setCopiedId(null), 1600)
+  }
+
+  async function handleFollowup(text) {
+    if (/section finder/i.test(text)) {
+      const m = text.match(/(\d{2,3}[A-Za-z]?)/)
+      setMode('section')
+      if (m) {
+        setInput(m[1])
+        void submit(m[1], 'section')
+      }
+      return
+    }
+    if (/^compare\b/i.test(text) || /\bIPC\b/i.test(text)) {
+      setMode('compare')
+      const q = text.replace(/^compare\s+/i, '')
+      void submit(q, 'compare')
+      return
+    }
+    if (/exact text of BNS Section/i.test(text)) {
+      const m = text.match(/Section\s+(\d{2,3}[A-Za-z]?)/i)
+      setMode('section')
+      if (m) {
+        setInput(m[1])
+        void submit(m[1], 'section')
+      }
+      return
+    }
+    setMode('ask')
+    void submit(text, 'ask')
+  }
+
+  async function submit(question, forcedMode) {
+    const active = forcedMode || mode
     const q = question.trim()
     if (!q || loading) return
+    if (active === 'upload') return
 
     setError(null)
     setInput('')
@@ -167,7 +214,7 @@ function App() {
     setLoading(true)
 
     try {
-      if (mode === 'ask') {
+      if (active === 'ask') {
         const res = await askQuestion(q)
         setMessages((prev) => [
           ...prev,
@@ -176,9 +223,13 @@ function App() {
             role: 'assistant',
             content: res.answer,
             sources: res.sources,
+            followups: res.followups,
+            retrieval: res.retrieval,
+            pipeline: res.pipeline,
+            formatted: true,
           },
         ])
-      } else if (mode === 'compare') {
+      } else if (active === 'compare') {
         const res = await compareLaws(q)
         setMessages((prev) => [
           ...prev,
@@ -187,6 +238,26 @@ function App() {
             role: 'assistant',
             content: res.explanation,
             mappings: res.mappings,
+            followups: ['Ask about punishment under the BNS section', 'Open Section Finder for that BNS number'],
+            formatted: true,
+          },
+        ])
+      } else if (active === 'section') {
+        const res = await lookupSection(q)
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: `**Section ${res.section}**\n\n${res.note}`,
+            sectionMatches: res.matches,
+            followups: res.found
+              ? [
+                  `What is the punishment under BNS Section ${res.section}?`,
+                  `Compare IPC mapping for ${res.section}`,
+                ]
+              : ['Try Ask mode with the offence name', 'Rebuild index after uploading BNS.pdf'],
+            formatted: true,
           },
         ])
       }
@@ -197,32 +268,44 @@ function App() {
     }
   }
 
-  function onSubmit(e: FormEvent) {
+  function onSubmit(e) {
     e.preventDefault()
     void submit(input)
   }
 
-  const hints = mode === 'ask' ? ASK_HINTS : COMPARE_HINTS
+  const hints = mode === 'ask' ? ASK_HINTS : mode === 'compare' ? COMPARE_HINTS : SECTION_HINTS
   const headerCopy =
     mode === 'ask'
       ? {
           title: 'Ask the new Indian criminal law',
-          body: 'Answers are grounded in retrieved text from your uploaded PDFs and sample corpus.',
+          body: 'Answers are grounded in retrieved text from your uploaded BNS PDF, with citations and confidence.',
         }
       : mode === 'compare'
         ? {
             title: 'Compare IPC and BNS sections',
             body: 'Look up how familiar IPC offences map into Bharatiya Nyaya Sanhita.',
           }
-        : {
-            title: 'Upload law PDFs',
-            body: 'Add official BNS or IPC PDFs. We save them, chunk them, and rebuild the FAISS index.',
-          }
+        : mode === 'section'
+          ? {
+              title: 'Find a BNS section in the PDF',
+              body: 'Lexical section lookup — great when you already know the number (103, 281, 318…).',
+            }
+          : {
+              title: 'Upload law PDFs',
+              body: 'Add official BNS PDFs. We save them, chunk them, and rebuild the FAISS index.',
+            }
 
   return (
     <div className="shell">
       <nav className="navbar">
-        <a className="nav-brand" href="#top" onClick={() => setMode('ask')}>
+        <a
+          className="nav-brand"
+          href="#top"
+          onClick={(e) => {
+            e.preventDefault()
+            setMode('ask')
+          }}
+        >
           <span className="nav-brand-mark">
             Nyaya-<em>Sahayak</em>
           </span>
@@ -230,27 +313,23 @@ function App() {
         </a>
 
         <div className="nav-links">
-          <button
-            type="button"
-            className={`nav-link ${mode === 'ask' ? 'active' : ''}`}
-            onClick={() => setMode('ask')}
-          >
-            Ask
-          </button>
-          <button
-            type="button"
-            className={`nav-link ${mode === 'compare' ? 'active' : ''}`}
-            onClick={() => setMode('compare')}
-          >
-            Compare
-          </button>
-          <button
-            type="button"
-            className={`nav-link ${mode === 'upload' ? 'active' : ''}`}
-            onClick={() => setMode('upload')}
-          >
-            Upload PDF
-          </button>
+          {(
+            [
+              ['ask', 'Ask'],
+              ['compare', 'Compare'],
+              ['section', 'Sections'],
+              ['upload', 'Upload PDF'],
+            ]
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={`nav-link ${mode === id ? 'active' : ''}`}
+              onClick={() => setMode(id)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <div className="nav-status">
@@ -270,7 +349,27 @@ function App() {
           <p className="eyebrow">Nyaya-Sahayak</p>
           <h1>{headerCopy.title}</h1>
           <p>{headerCopy.body}</p>
+          <button type="button" className="how-toggle" onClick={() => setShowHow((v) => !v)}>
+            {showHow ? 'Hide how RAG works' : 'How RAG works'}
+          </button>
         </header>
+
+        {showHow && (
+          <section className="how-panel">
+            <ol>
+              {PIPELINE_STEPS.map((step) => (
+                <li key={step.id}>
+                  <strong>{step.label}</strong>
+                  <span>{step.id}</span>
+                </li>
+              ))}
+            </ol>
+            <p>
+              Interview tip: FAISS returns L2 distance (lower = closer). We expand colloquial queries
+              like “hit-and-run” into statute language before searching.
+            </p>
+          </section>
+        )}
 
         {mode === 'upload' ? (
           <section className="panel upload-panel">
@@ -315,7 +414,7 @@ function App() {
                 {ingesting ? 'Rebuilding…' : 'Rebuild index'}
               </button>
               <p className="upload-hint">
-                Uploaded files are stored in <code>data/raw/</code> and indexed with the sample corpus.
+                While PDFs exist in <code>data/raw/</code>, demo sample text is skipped.
               </p>
             </div>
 
@@ -346,8 +445,8 @@ function App() {
                 ))}
               </div>
               <div className="toolbar-actions">
-                <button type="button" className="action-btn" onClick={() => setMode('upload')}>
-                  Upload PDF
+                <button type="button" className="action-btn" onClick={() => setMessages([])}>
+                  Clear chat
                 </button>
                 <button
                   type="button"
@@ -363,20 +462,53 @@ function App() {
             <div className="thread">
               {messages.length === 0 && (
                 <div className="empty">
-                  <strong>{mode === 'ask' ? 'Start with a legal question' : 'Look up a mapping'}</strong>
+                  <strong>
+                    {mode === 'ask'
+                      ? 'Start with a legal question'
+                      : mode === 'compare'
+                        ? 'Look up a mapping'
+                        : 'Enter a section number'}
+                  </strong>
                   {mode === 'ask'
                     ? 'Example: “What is the punishment for cheating under the new law?”'
-                    : 'Example: “302” or “What is 498A now?”'}
+                    : mode === 'compare'
+                      ? 'Example: “302” or “What is 498A now?”'
+                      : 'Example: 103, 281, or 318'}
                 </div>
               )}
 
               {messages.map((m) => (
                 <div key={m.id} className={`bubble ${m.role}`}>
-                  {m.content}
+                  {m.role === 'assistant' && m.formatted ? (
+                    <AnswerBody text={m.content} />
+                  ) : (
+                    m.content
+                  )}
+
+                  {m.retrieval && (
+                    <div className={`retrieval-meta ${m.retrieval.low_confidence ? 'warn' : 'ok'}`}>
+                      {m.retrieval.low_confidence
+                        ? 'Low retrieval confidence — answer may be limited by matching chunks.'
+                        : `Grounded retrieval · best L2 ${m.retrieval.best_l2_distance}`}
+                    </div>
+                  )}
+
+                  {m.pipeline && m.pipeline.length > 0 && (
+                    <div className="mini-pipeline">
+                      {m.pipeline.map((step) => (
+                        <span key={step}>{step.replaceAll('_', ' ')}</span>
+                      ))}
+                    </div>
+                  )}
+
                   {m.sources && m.sources.length > 0 && (
                     <div className="sources">
+                      <div className="sources-title">Sources from corpus</div>
                       {m.sources.map((s, i) => (
-                        <div className="source" key={`${m.id}-${i}`}>
+                        <div
+                          className={`source relevance-${s.relevance || 'low'}`}
+                          key={`${m.id}-${i}`}
+                        >
                           <span>
                             {s.source_name || 'Source'}
                             {s.page != null ? ` · p.${s.page + 1}` : ''}
@@ -388,6 +520,22 @@ function App() {
                       ))}
                     </div>
                   )}
+
+                  {m.sectionMatches && m.sectionMatches.length > 0 && (
+                    <div className="sources">
+                      <div className="sources-title">Matched PDF chunks</div>
+                      {m.sectionMatches.map((s, i) => (
+                        <div className="source relevance-high" key={`${m.id}-sec-${i}`}>
+                          <span>
+                            {s.source_name}
+                            {s.page != null ? ` · p.${s.page + 1}` : ''}
+                          </span>
+                          {s.excerpt}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {m.mappings && m.mappings.length > 0 && (
                     <div className="mapping-list">
                       {m.mappings.map((row) => (
@@ -400,6 +548,24 @@ function App() {
                           </div>
                           {row.notes}
                         </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {m.role === 'assistant' && (
+                    <div className="msg-actions">
+                      <button type="button" className="action-btn" onClick={() => void copyMessage(m)}>
+                        {copiedId === m.id ? 'Copied' : 'Copy answer'}
+                      </button>
+                    </div>
+                  )}
+
+                  {m.followups && m.followups.length > 0 && (
+                    <div className="followups">
+                      {m.followups.map((f) => (
+                        <button key={f} type="button" className="hint" onClick={() => void handleFollowup(f)}>
+                          {f}
+                        </button>
                       ))}
                     </div>
                   )}
@@ -419,12 +585,14 @@ function App() {
                 placeholder={
                   mode === 'ask'
                     ? 'Ask about BNS punishment, offence, or procedure…'
-                    : 'Enter IPC/BNS section or offence name…'
+                    : mode === 'compare'
+                      ? 'Enter IPC/BNS section or offence name…'
+                      : 'Enter section number, e.g. 103'
                 }
                 disabled={loading}
               />
               <button className="send-btn" type="submit" disabled={loading || !input.trim()}>
-                {loading ? '…' : mode === 'ask' ? 'Ask' : 'Compare'}
+                {loading ? '…' : mode === 'ask' ? 'Ask' : mode === 'compare' ? 'Compare' : 'Find'}
               </button>
             </form>
           </section>

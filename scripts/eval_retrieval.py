@@ -52,7 +52,7 @@ def main() -> int:
     print(f"top_k={settings.top_k}  embeddings={settings.embedding_model}\n")
 
     for case in CASES:
-        ranked = retrieve_with_scores(case["question"], settings)
+        ranked, _ = retrieve_with_scores(case["question"], settings)
         haystack = "\n".join(doc.page_content for doc, _ in ranked)
         ok = case["must_include"].lower() in haystack.lower()
         passed += int(ok)

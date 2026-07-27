@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     chunk_size: int = 600
     chunk_overlap: int = 80
-    top_k: int = 6
+    top_k: int = 8
 
     def model_post_init(self, __context) -> None:
         # Strip whitespace / accidental quotes from pasted keys
