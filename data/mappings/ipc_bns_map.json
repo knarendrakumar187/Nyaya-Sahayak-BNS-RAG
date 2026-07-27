@@ -70,6 +70,223 @@
       "title": "Criminal intimidation",
       "keywords": ["threat", "intimidation", "criminal intimidation"],
       "notes": "Intimidation offence renumbered under BNS."
+    },
+    {
+      "ipc_section": "379",
+      "bns_section": "303",
+      "title": "Theft",
+      "keywords": ["theft", "stealing"],
+      "notes": "Theft chapter renumbered; check BNS 303 for punishment tiers."
+    },
+    {
+      "ipc_section": "392",
+      "bns_section": "309",
+      "title": "Robbery",
+      "keywords": ["robbery"],
+      "notes": "Robbery / dacoity cluster was reorganised under BNS."
+    },
+    {
+      "ipc_section": "395",
+      "bns_section": "310",
+      "title": "Dacoity",
+      "keywords": ["dacoity"],
+      "notes": "Dacoity remains a distinct aggravated property offence in BNS."
+    },
+    {
+      "ipc_section": "411",
+      "bns_section": "317",
+      "title": "Dishonestly receiving stolen property",
+      "keywords": ["stolen property", "receiving stolen"],
+      "notes": "Receiving stolen property maps near cheating/property offences in BNS."
+    },
+    {
+      "ipc_section": "405",
+      "bns_section": "316",
+      "title": "Criminal breach of trust",
+      "keywords": ["breach of trust", "cbt", "entrustment"],
+      "notes": "CBT language is carried forward with new numbering."
+    },
+    {
+      "ipc_section": "406",
+      "bns_section": "316",
+      "title": "Punishment for criminal breach of trust",
+      "keywords": ["breach of trust punishment"],
+      "notes": "Confirm exact punishment limb in BNS 316."
+    },
+    {
+      "ipc_section": "463",
+      "bns_section": "336",
+      "title": "Forgery",
+      "keywords": ["forgery", "false document"],
+      "notes": "Forgery and related document offences were regrouped in BNS."
+    },
+    {
+      "ipc_section": "468",
+      "bns_section": "336",
+      "title": "Forgery for purpose of cheating",
+      "keywords": ["forgery for cheating"],
+      "notes": "Often discussed with cheating (BNS 318) in fraud cases."
+    },
+    {
+      "ipc_section": "471",
+      "bns_section": "340",
+      "title": "Using as genuine a forged document",
+      "keywords": ["using forged document", "forged document"],
+      "notes": "Using forged documents remains a separate charge path."
+    },
+    {
+      "ipc_section": "499",
+      "bns_section": "356",
+      "title": "Defamation",
+      "keywords": ["defamation", "reputation"],
+      "notes": "Defamation continues under BNS with updated numbering."
+    },
+    {
+      "ipc_section": "509",
+      "bns_section": "79",
+      "title": "Word, gesture or act intended to insult modesty of a woman",
+      "keywords": ["modesty", "insult modesty", "509"],
+      "notes": "Sexual harassment / insult-to-modesty cluster was reorganised."
+    },
+    {
+      "ipc_section": "354",
+      "bns_section": "74",
+      "title": "Assault or criminal force to woman with intent to outrage her modesty",
+      "keywords": ["outrage modesty", "354"],
+      "notes": "Related offences appear in the sexual offences / women-safety chapters of BNS."
+    },
+    {
+      "ipc_section": "186",
+      "bns_section": "221",
+      "title": "Obstructing public servant in discharge of public functions",
+      "keywords": ["obstruction", "public servant"],
+      "notes": "Offences against public justice / public servants were renumbered."
+    },
+    {
+      "ipc_section": "193",
+      "bns_section": "229",
+      "title": "False evidence / related false-statement offences",
+      "keywords": ["false evidence", "perjury"],
+      "notes": "Confirm exact limb for giving/ fabricating false evidence in BNS."
+    },
+    {
+      "ipc_section": "201",
+      "bns_section": "238",
+      "title": "Causing disappearance of evidence / giving false information",
+      "keywords": ["disappearance of evidence", "destroy evidence"],
+      "notes": "Evidence-tampering related offences continue under BNS public-justice chapters."
+    },
+    {
+      "ipc_section": "120B",
+      "bns_section": "61",
+      "title": "Criminal conspiracy",
+      "keywords": ["conspiracy", "120b"],
+      "notes": "Conspiracy concepts continue; always check the substantive offence too."
+    },
+    {
+      "ipc_section": "34",
+      "bns_section": "3(5)",
+      "title": "Acts done by several persons in furtherance of common intention",
+      "keywords": ["common intention", "section 34"],
+      "notes": "Common intention principle is retained in BNS general explanations."
+    },
+    {
+      "ipc_section": "107",
+      "bns_section": "45",
+      "title": "Abetment of a thing",
+      "keywords": ["abetment", "abet"],
+      "notes": "Abetment definitions and punishments were reorganised early in BNS."
+    },
+    {
+      "ipc_section": "141",
+      "bns_section": "189",
+      "title": "Unlawful assembly",
+      "keywords": ["unlawful assembly", "riot"],
+      "notes": "Public order offences including unlawful assembly / rioting were renumbered."
+    },
+    {
+      "ipc_section": "147",
+      "bns_section": "191",
+      "title": "Rioting",
+      "keywords": ["rioting", "riot"],
+      "notes": "Related to unlawful assembly provisions in BNS."
+    },
+    {
+      "ipc_section": "319",
+      "bns_section": "314",
+      "title": "Hurt",
+      "keywords": ["hurt", "injury"],
+      "notes": "Hurt / grievous hurt structure continues with new numbers."
+    },
+    {
+      "ipc_section": "320",
+      "bns_section": "116",
+      "title": "Grievous hurt (definition / related)",
+      "keywords": ["grievous hurt"],
+      "notes": "Verify exact definition and punishment limbs in current BNS text."
+    },
+    {
+      "ipc_section": "323",
+      "bns_section": "115",
+      "title": "Punishment for voluntarily causing hurt",
+      "keywords": ["voluntarily causing hurt", "323"],
+      "notes": "Common charge in assault cases; confirm BNS limb."
+    },
+    {
+      "ipc_section": "325",
+      "bns_section": "117",
+      "title": "Punishment for voluntarily causing grievous hurt",
+      "keywords": ["grievous hurt punishment", "325"],
+      "notes": "Often paired with weapon / dangerous means enhancements nearby."
+    },
+    {
+      "ipc_section": "341",
+      "bns_section": "126",
+      "title": "Wrongful restraint",
+      "keywords": ["wrongful restraint"],
+      "notes": "Wrongful restraint / confinement cluster renumbered."
+    },
+    {
+      "ipc_section": "342",
+      "bns_section": "127",
+      "title": "Wrongful confinement",
+      "keywords": ["wrongful confinement"],
+      "notes": "Often charged with hurt / intimidation in fact patterns."
+    },
+    {
+      "ipc_section": "503",
+      "bns_section": "351",
+      "title": "Criminal intimidation (definition / related)",
+      "keywords": ["criminal intimidation definition"],
+      "notes": "Pairs with BNS 351 punishment provisions."
+    },
+    {
+      "ipc_section": "182",
+      "bns_section": "217",
+      "title": "False information to public servant",
+      "keywords": ["false information", "false complaint"],
+      "notes": "Relevant in fake-complaint / misleading-police discussions."
+    },
+    {
+      "ipc_section": "171E",
+      "bns_section": "173",
+      "title": "Bribery (elections / related)",
+      "keywords": ["election bribery", "bribery"],
+      "notes": "Election offences and bribery-related provisions were reorganised; also check PC Act for public-servant bribery."
+    },
+    {
+      "ipc_section": "417",
+      "bns_section": "318",
+      "title": "Punishment for cheating",
+      "keywords": ["cheating punishment"],
+      "notes": "Cheating family largely consolidates around BNS 318."
+    },
+    {
+      "ipc_section": "419",
+      "bns_section": "319",
+      "title": "Punishment for cheating by personation",
+      "keywords": ["cheating by personation", "impersonation", "proxy"],
+      "notes": "Personation / proxy interview discussions often cite BNS 319."
     }
   ]
 }

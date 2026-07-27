@@ -7,7 +7,9 @@ Sample .txt files are a fallback for first-run demos without uploads.
 
 from __future__ import annotations
 
+import hashlib
 import json
+from functools import lru_cache
 from pathlib import Path
 
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader, TextLoader
@@ -17,10 +19,38 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from backend.config import Settings, get_settings
 
+_INDEX_CACHE: dict = {"key": None, "store": None}
 
-def get_embeddings(settings: Settings | None = None) -> HuggingFaceEmbeddings:
-    settings = settings or get_settings()
-    return HuggingFaceEmbeddings(model_name=settings.embedding_model)
+
+def corpus_version_hash(paths: list[Path]) -> str:
+    """Stable short hash of corpus file bytes for citation provenance."""
+    h = hashlib.sha256()
+    for path in sorted(paths, key=lambda p: p.name.lower()):
+        h.update(path.name.encode("utf-8"))
+        h.update(b"\0")
+        with path.open("rb") as f:
+            while True:
+                block = f.read(1024 * 1024)
+                if not block:
+                    break
+                h.update(block)
+    return h.hexdigest()[:12]
+
+
+@lru_cache(maxsize=1)
+def get_embeddings(model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> HuggingFaceEmbeddings:
+    return HuggingFaceEmbeddings(model_name=model_name)
+
+
+def clear_index_cache() -> None:
+    _INDEX_CACHE["key"] = None
+    _INDEX_CACHE["store"] = None
+
+
+def _index_cache_key(settings: Settings) -> tuple:
+    faiss_file = settings.index_path / "index.faiss"
+    mtime = faiss_file.stat().st_mtime if faiss_file.exists() else 0
+    return (str(settings.index_path), mtime, settings.embedding_model)
 
 
 def load_documents(settings: Settings | None = None) -> tuple[list, dict]:
@@ -63,10 +93,12 @@ def load_documents(settings: Settings | None = None) -> tuple[list, dict]:
             docs.extend(txt_loader.load())
             source_files = [p.name for p in txts]
 
+    file_paths = pdfs if pdfs else sorted(settings.sample_dir.glob("*.txt"))
     info = {
         "corpus_mode": mode,  # "pdf" | "sample"
         "source_files": source_files,
         "num_pages_or_files": len(docs),
+        "corpus_version": corpus_version_hash(file_paths) if file_paths else None,
     }
     return docs, info
 
@@ -100,11 +132,14 @@ def build_index(settings: Settings | None = None) -> dict:
         src = chunk.metadata.get("source", "")
         chunk.metadata["source_name"] = Path(str(src)).name if src else "unknown"
 
-    embeddings = get_embeddings(settings)
+    embeddings = get_embeddings(settings.embedding_model)
     vectorstore = FAISS.from_documents(chunks, embeddings)
 
     settings.processed_dir.mkdir(parents=True, exist_ok=True)
     vectorstore.save_local(str(settings.index_path))
+    clear_index_cache()
+    _INDEX_CACHE["key"] = _index_cache_key(settings)
+    _INDEX_CACHE["store"] = vectorstore
 
     meta = {
         "ok": True,
@@ -123,17 +158,26 @@ def build_index(settings: Settings | None = None) -> dict:
 
 
 def load_index(settings: Settings | None = None) -> FAISS:
+    """Load FAISS once and reuse in memory (big speedup for Ask)."""
     settings = settings or get_settings()
     if not settings.index_path.exists():
         raise FileNotFoundError(
             "Vector index missing. Upload a PDF or click Rebuild index first."
         )
-    embeddings = get_embeddings(settings)
-    return FAISS.load_local(
+
+    key = _index_cache_key(settings)
+    if _INDEX_CACHE["store"] is not None and _INDEX_CACHE["key"] == key:
+        return _INDEX_CACHE["store"]
+
+    embeddings = get_embeddings(settings.embedding_model)
+    store = FAISS.load_local(
         str(settings.index_path),
         embeddings,
         allow_dangerous_deserialization=True,
     )
+    _INDEX_CACHE["key"] = key
+    _INDEX_CACHE["store"] = store
+    return store
 
 
 def read_index_meta(settings: Settings | None = None) -> dict | None:

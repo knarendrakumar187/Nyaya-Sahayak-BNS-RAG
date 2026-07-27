@@ -1,0 +1,15 @@
+# Production: one service serves API + React build on :8000
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - SERVE_FRONTEND=true
+      - CORS_ORIGINS=*
+    volumes:
+      # Persist uploaded PDFs + FAISS index
+      - ./data:/app/data
+    restart: unless-stopped

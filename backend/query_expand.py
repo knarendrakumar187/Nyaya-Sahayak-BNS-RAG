@@ -12,6 +12,56 @@ import re
 # phrase (regex) -> extra retrieval queries
 _EXPANSIONS: list[tuple[re.Pattern[str], list[str]]] = [
     (
+        re.compile(r"proxy|impersonat|personation|someone else sits|fake candidate", re.I),
+        [
+            "cheating by personation Section 319",
+            "personation Section 319",
+            "whoever cheats by personation",
+        ],
+    ),
+    (
+        re.compile(r"bribery|bribe|nepotism|corruption|gratification|paying for selection", re.I),
+        [
+            "public servant taking gratification Section 171",
+            "bribery public servant",
+            "gratification other than legal remuneration",
+        ],
+    ),
+    (
+        re.compile(r"fake interview|job scam|fake selection|fraudulent panel|extort", re.I),
+        [
+            "cheating and dishonestly inducing delivery of property Section 318",
+            "Section 318 cheating",
+            "cheating with knowledge that wrongful loss may ensue",
+        ],
+    ),
+    (
+        re.compile(r"merit list|tamper(?:ing)?|interview score|public examination|rank manipulat", re.I),
+        [
+            "forgery of record of Court or public register",
+            "falsification of accounts",
+            "forgery for purpose of cheating",
+            "public servant framing incorrect document",
+        ],
+    ),
+    (
+        re.compile(r"interview|impress|important sections|must[\s-]?know|study", re.I),
+        [
+            "cheating by personation Section 319",
+            "public servant taking gratification Section 171",
+            "cheating Section 318",
+            "punishment for murder Section 103",
+        ],
+    ),
+    (
+        re.compile(r"malpractice|medical negligence|doctor neglig", re.I),
+        [
+            "causing death by negligence Section 106",
+            "rash or negligent act endanger human life",
+            "negligent act not amounting to culpable homicide",
+        ],
+    ),
+    (
         re.compile(r"hit[\s-]?and[\s-]?run|flee(?:ing)?\s+(?:the\s+)?scene|left\s+the\s+spot", re.I),
         [
             "rash driving or riding on a public way",

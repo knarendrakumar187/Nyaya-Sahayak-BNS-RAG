@@ -7,6 +7,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 data/processed/
+!data/processed/.gitkeep
 data/raw/*.pdf
 !data/raw/.gitkeep
 *.faiss

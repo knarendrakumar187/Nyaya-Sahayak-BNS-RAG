@@ -1,32 +1,35 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  askQuestion,
+  askQuestionStream,
   compareLaws,
+  deleteDocument,
   getHealth,
-  ingestCorpus,
+  getIngestStatus,
   listDocuments,
   lookupSection,
+  runEval,
+  startIngestJob,
   uploadPdf,
 } from './api'
 import { AnswerBody } from './AnswerBody'
+import { ProgressOverlay, Toast } from './ProgressUI'
 import './App.css'
 
 const ASK_HINTS = [
-  'Punishment for murder under BNS?',
-  'What is cheating under BNS?',
-  'Rash driving on a public way — which BNS section?',
-  'Hit-and-run: which BNS sections apply?',
+  'Proxy interview / impersonation — which BNS section applies?',
+  'Bribery or corruption in interview selection — BNS sections?',
+  'Fake job interview scam cheating candidates — which BNS section?',
+  'Tampering merit list or interview scores — which law applies?',
 ]
 
-const COMPARE_HINTS = ['302', '498A', 'cheating', 'sedition']
-const SECTION_HINTS = ['103', '106', '281', '318', '85']
+const COMPARE_HINTS = ['302', '304A', '420', '498A', '419']
+const SECTION_HINTS = ['319', '171', '318', '103', '281']
 
 const PIPELINE_STEPS = [
-  { id: 'query_expansion', label: 'Expand query' },
-  { id: 'multi_query_faiss', label: 'FAISS search' },
-  { id: 'keyword_boost', label: 'Keyword boost' },
+  { id: 'hybrid_retrieve', label: 'Hybrid FAISS + keyword' },
+  { id: 'injection_scrub', label: 'Scrub prompt injection' },
   { id: 'prompt_with_context', label: 'Ground prompt' },
-  { id: 'llm_generate', label: 'Generate answer' },
+  { id: 'llm_stream', label: 'Stream answer' },
 ]
 
 function formatBytes(n) {
@@ -35,24 +38,65 @@ function formatBytes(n) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function exportMarkdown(m) {
+  const parts = [`# Nyaya-Sahayak answer\n\n${m.content}\n`]
+  if (m.sources?.length) {
+    parts.push('\n## Sources\n')
+    for (const s of m.sources) {
+      parts.push(
+        `- **${s.source_name || 'Source'}**${s.page != null ? ` (p.${s.page + 1})` : ''}${
+          s.corpus_version ? ` · corpus \`${s.corpus_version}\`` : ''
+        }: ${s.excerpt}`,
+      )
+    }
+  }
+  const blob = new Blob([parts.join('\n')], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `nyaya-answer-${Date.now()}.md`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 function App() {
   const [mode, setMode] = useState('ask')
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
   const [ingesting, setIngesting] = useState(false)
+  const [ingestPct, setIngestPct] = useState(0)
+  const [ingestMsg, setIngestMsg] = useState('')
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
   const [indexReady, setIndexReady] = useState(false)
   const [provider, setProvider] = useState('gemini')
   const [corpusMode, setCorpusMode] = useState(null)
   const [sourceFiles, setSourceFiles] = useState([])
+  const [corpusVersion, setCorpusVersion] = useState(null)
+  const [authRequired, setAuthRequired] = useState(false)
   const [documents, setDocuments] = useState([])
   const [dragOver, setDragOver] = useState(false)
   const [showHow, setShowHow] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
+  const [toast, setToast] = useState(null)
+  const [language, setLanguage] = useState('en')
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('nyaya_api_key') || '')
+  const [evalData, setEvalData] = useState(null)
+  const [evalLoading, setEvalLoading] = useState(false)
   const fileInputRef = useRef(null)
   const bottomRef = useRef(null)
+
+  function showToast(text, tone = 'ok') {
+    setToast({ text, tone })
+    window.setTimeout(() => setToast(null), 4200)
+  }
+
+  function saveApiKey(value) {
+    setApiKey(value)
+    if (value) localStorage.setItem('nyaya_api_key', value)
+    else localStorage.removeItem('nyaya_api_key')
+  }
 
   async function refreshDocs() {
     try {
@@ -69,6 +113,8 @@ function App() {
       setProvider(h.llm_provider)
       setCorpusMode(h.corpus_mode ?? null)
       setSourceFiles(h.source_files ?? [])
+      setCorpusVersion(h.corpus_version ?? null)
+      setAuthRequired(Boolean(h.auth_required))
     } catch {
       setIndexReady(false)
     }
@@ -85,33 +131,75 @@ function App() {
 
   useEffect(() => {
     if (mode === 'upload') void refreshDocs()
+    if (mode === 'eval') void handleEval()
   }, [mode])
+
+  async function pollIngest(jobId) {
+    for (let i = 0; i < 120; i++) {
+      const job = await getIngestStatus(jobId)
+      setIngestPct(job.pct ?? 0)
+      setIngestMsg(job.message || job.stage || '')
+      if (job.status === 'done') return job.result
+      if (job.status === 'error') throw new Error(job.error || 'Ingest failed')
+      await new Promise((r) => setTimeout(r, 800))
+    }
+    throw new Error('Ingest timed out')
+  }
 
   async function handleIngest() {
     setIngesting(true)
+    setIngestPct(5)
+    setIngestMsg('Starting…')
     setError(null)
     try {
-      const meta = await ingestCorpus()
+      const { job_id } = await startIngestJob()
+      const meta = await pollIngest(job_id)
       setIndexReady(true)
-      setCorpusMode(meta.corpus_mode ?? null)
-      setSourceFiles(meta.source_files ?? [])
-      const files = (meta.source_files ?? []).join(', ') || 'corpus'
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content:
-            meta.corpus_mode === 'pdf'
-              ? `Real PDF index ready from ${files} — ${meta.num_chunks} chunks. Demo sample is NOT used.`
-              : `Demo sample index ready — ${meta.num_chunks} chunks. Upload a BNS PDF for the real corpus.`,
-        },
-      ])
+      setCorpusMode(meta?.corpus_mode ?? null)
+      setSourceFiles(meta?.source_files ?? [])
+      setCorpusVersion(meta?.corpus_version ?? null)
+      const files = (meta?.source_files ?? []).join(', ') || 'corpus'
+      const msg =
+        meta?.corpus_mode === 'pdf'
+          ? `Index ready from ${files} — ${meta.num_chunks} searchable chunks (corpus ${meta.corpus_version || 'n/a'}).`
+          : `Demo index ready — ${meta?.num_chunks} chunks. Upload a BNS PDF for real answers.`
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: msg }])
+      showToast(`Index built successfully (${meta?.num_chunks} chunks)`, 'ok')
       await refreshHealth()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ingest failed')
+      const message = err instanceof Error ? err.message : 'Ingest failed'
+      setError(message)
+      showToast(message, 'error')
     } finally {
       setIngesting(false)
+      setIngestPct(0)
+      setIngestMsg('')
+    }
+  }
+
+  async function handleDelete(name) {
+    try {
+      await deleteDocument(name)
+      showToast(`Deleted ${name}`, 'ok')
+      await refreshDocs()
+      await refreshHealth()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Delete failed'
+      setError(message)
+      showToast(message, 'error')
+    }
+  }
+
+  async function handleEval() {
+    setEvalLoading(true)
+    setError(null)
+    try {
+      setEvalData(await runEval())
+    } catch (err) {
+      setEvalData(null)
+      setError(err instanceof Error ? err.message : 'Eval failed')
+    } finally {
+      setEvalLoading(false)
     }
   }
 
@@ -146,9 +234,17 @@ function App() {
               : `Uploaded ${results.length} PDFs and rebuilt a REAL PDF index${chunks ? ` (${chunks} chunks)` : ''}.`,
         },
       ])
+      showToast(
+        results.length === 1
+          ? `Uploaded ${results[0].filename} and indexed successfully`
+          : `Uploaded ${results.length} PDFs and indexed successfully`,
+        'ok',
+      )
       setMode('ask')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
+      const message = err instanceof Error ? err.message : 'Upload failed'
+      setError(message)
+      showToast(message, 'error')
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -168,6 +264,13 @@ function App() {
     await navigator.clipboard.writeText(parts.join('\n'))
     setCopiedId(m.id)
     window.setTimeout(() => setCopiedId(null), 1600)
+  }
+
+  function historyForAsk(prevMessages) {
+    return prevMessages
+      .filter((m) => m.role === 'user' || (m.role === 'assistant' && m.formatted))
+      .slice(-6)
+      .map((m) => ({ role: m.role, content: m.content }))
   }
 
   async function handleFollowup(text) {
@@ -203,32 +306,57 @@ function App() {
     const active = forcedMode || mode
     const q = question.trim()
     if (!q || loading) return
-    if (active === 'upload') return
+    if (active === 'upload' || active === 'eval') return
 
     setError(null)
     setInput('')
-    setMessages((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), role: 'user', content: q },
-    ])
+    const userMsg = { id: crypto.randomUUID(), role: 'user', content: q }
+    setMessages((prev) => [...prev, userMsg])
     setLoading(true)
 
     try {
       if (active === 'ask') {
-        const res = await askQuestion(q)
+        const streamId = crypto.randomUUID()
         setMessages((prev) => [
           ...prev,
           {
-            id: crypto.randomUUID(),
+            id: streamId,
             role: 'assistant',
-            content: res.answer,
-            sources: res.sources,
-            followups: res.followups,
-            retrieval: res.retrieval,
-            pipeline: res.pipeline,
+            content: '',
             formatted: true,
+            streaming: true,
           },
         ])
+
+        const history = historyForAsk([...messages, userMsg])
+        const final = await askQuestionStream(q, {
+          language,
+          history,
+          hybrid: true,
+          onToken: (text) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === streamId ? { ...m, content: (m.content || '') + text } : m)),
+            )
+          },
+        })
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === streamId
+              ? {
+                  ...m,
+                  content: final?.answer ?? m.content,
+                  sources: final?.sources,
+                  followups: final?.followups,
+                  retrieval: final?.retrieval,
+                  pipeline: final?.pipeline,
+                  corpus: final?.corpus,
+                  streaming: false,
+                  formatted: true,
+                }
+              : m,
+          ),
+        )
       } else if (active === 'compare') {
         const res = await compareLaws(q)
         setMessages((prev) => [
@@ -238,7 +366,10 @@ function App() {
             role: 'assistant',
             content: res.explanation,
             mappings: res.mappings,
-            followups: ['Ask about punishment under the BNS section', 'Open Section Finder for that BNS number'],
+            followups: [
+              'Ask about punishment under the BNS section',
+              'Open Section Finder for that BNS number',
+            ],
             formatted: true,
           },
         ])
@@ -290,13 +421,25 @@ function App() {
               title: 'Find a BNS section in the PDF',
               body: 'Lexical section lookup — great when you already know the number (103, 281, 318…).',
             }
-          : {
-              title: 'Upload law PDFs',
-              body: 'Add official BNS PDFs. We save them, chunk them, and rebuild the FAISS index.',
-            }
+          : mode === 'eval'
+            ? {
+                title: 'Retrieval eval dashboard',
+                body: 'Hit@k style checks — does the right section land in top retrieved chunks?',
+              }
+            : {
+                title: 'Upload law PDFs',
+                body: 'Add official BNS PDFs. We save them, chunk them, and rebuild the FAISS index.',
+              }
 
   return (
     <div className="shell">
+      <ProgressOverlay
+        kind={uploading ? 'upload' : ingesting ? 'ingest' : loading ? 'ask' : null}
+        busy={uploading || ingesting || loading}
+        detail={ingesting ? `${ingestPct}% · ${ingestMsg}` : undefined}
+      />
+      <Toast text={toast?.text} tone={toast?.tone} onClose={() => setToast(null)} />
+
       <nav className="navbar">
         <a
           className="nav-brand"
@@ -318,6 +461,7 @@ function App() {
               ['ask', 'Ask'],
               ['compare', 'Compare'],
               ['section', 'Sections'],
+              ['eval', 'Eval'],
               ['upload', 'Upload PDF'],
             ]
           ).map(([id, label]) => (
@@ -335,18 +479,19 @@ function App() {
         <div className="nav-status">
           <span className={`dot ${indexReady ? 'ok' : ''}`} />
           <span>
-            {indexReady
-              ? corpusMode === 'pdf'
-                ? `Real PDF · ${sourceFiles[0] || 'uploaded'} · ${provider}`
-                : `Demo sample · ${provider}`
-              : 'Index not built'}
+            {ingesting || uploading
+              ? 'Working… please wait'
+              : indexReady
+                ? corpusMode === 'pdf'
+                  ? `Ready · ${sourceFiles[0] || 'PDF'}${corpusVersion ? ` · ${corpusVersion}` : ''} · ${provider}`
+                  : `Ready · demo · ${provider}`
+                : 'Index not built yet'}
           </span>
         </div>
       </nav>
 
       <div className="app" id="top">
         <header className="page-header">
-          <p className="eyebrow">Nyaya-Sahayak</p>
           <h1>{headerCopy.title}</h1>
           <p>{headerCopy.body}</p>
           <button type="button" className="how-toggle" onClick={() => setShowHow((v) => !v)}>
@@ -365,14 +510,27 @@ function App() {
               ))}
             </ol>
             <p>
-              Interview tip: FAISS returns L2 distance (lower = closer). We expand colloquial queries
-              like “hit-and-run” into statute language before searching.
+              Interview tip: FAISS returns L2 distance (lower = closer). Hybrid keyword boost recovers
+              colloquial queries. Chunks are scrubbed for prompt-injection patterns before the LLM sees them.
             </p>
           </section>
         )}
 
         {mode === 'upload' ? (
           <section className="panel upload-panel">
+            {(authRequired || apiKey) && (
+              <div className="api-key-row">
+                <label htmlFor="api-key">X-API-Key (required when server has API_KEY set)</label>
+                <input
+                  id="api-key"
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => saveApiKey(e.target.value)}
+                  placeholder="Paste API key for upload / ingest / delete"
+                />
+              </div>
+            )}
+
             <div
               className={`dropzone ${dragOver ? 'over' : ''} ${uploading ? 'busy' : ''}`}
               onDragOver={(e) => {
@@ -392,8 +550,12 @@ function App() {
                 if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click()
               }}
             >
-              <strong>{uploading ? 'Uploading & indexing…' : 'Drop BNS / IPC PDFs here'}</strong>
-              <span>or click to browse · PDF only · max 40 MB each</span>
+              <strong>{uploading ? 'Working on your PDF…' : 'Drop your BNS / IPC PDF here'}</strong>
+              <span>
+                {uploading
+                  ? 'Indexing can take about 1 minute — please keep this tab open'
+                  : 'or click to browse · PDF only · max 40 MB'}
+              </span>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -411,10 +573,17 @@ function App() {
                 onClick={() => void handleIngest()}
                 disabled={ingesting || uploading}
               >
-                {ingesting ? 'Rebuilding…' : 'Rebuild index'}
+                {ingesting ? `Building… ${ingestPct}%` : 'Rebuild index'}
               </button>
               <p className="upload-hint">
-                While PDFs exist in <code>data/raw/</code>, demo sample text is skipped.
+                Rebuild uses a real job status. While PDFs exist in <code>data/raw/</code>, demo text is
+                skipped.
+                {corpusVersion ? (
+                  <>
+                    {' '}
+                    Corpus version: <code>{corpusVersion}</code>
+                  </>
+                ) : null}
               </p>
             </div>
 
@@ -428,11 +597,109 @@ function App() {
                     <li key={d.name}>
                       <span>{d.name}</span>
                       <span className="doc-size">{formatBytes(d.size_bytes)}</span>
+                      <button type="button" className="action-btn danger" onClick={() => void handleDelete(d.name)}>
+                        Delete
+                      </button>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
+          </section>
+        ) : mode === 'eval' ? (
+          <section className="panel eval-panel">
+            <div className="eval-toolbar">
+              <div className="eval-toolbar-copy">
+                <p className="eval-kicker">Retrieval quality</p>
+                <h2>Hit@k checklist</h2>
+              </div>
+              <button
+                type="button"
+                className="tool-btn primary"
+                onClick={() => void handleEval()}
+                disabled={evalLoading}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M4.5 12a7.5 7.5 0 0 1 12.7-5.4M19.5 12a7.5 7.5 0 0 1-12.7 5.4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M17.2 3.8v4.2h-4.2M6.8 20.2v-4.2h4.2"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                {evalLoading ? 'Running…' : 'Re-run eval'}
+              </button>
+            </div>
+
+            {evalData ? (
+              <div className="eval-body">
+                <div
+                  className={`eval-score-card tone-${
+                    evalData.score_pct >= 80 ? 'good' : evalData.score_pct >= 50 ? 'mid' : 'bad'
+                  }`}
+                >
+                  <div
+                    className="eval-ring"
+                    style={{
+                      '--score': `${evalData.score_pct}`,
+                    }}
+                  >
+                    <div className="eval-ring-inner">
+                      <strong>{evalData.score_pct}%</strong>
+                      <span>score</span>
+                    </div>
+                  </div>
+                  <div className="eval-score-meta">
+                    <p className="eval-score-title">
+                      {evalData.passed} of {evalData.total} cases retrieved correctly
+                    </p>
+                    <p className="eval-score-sub">{evalData.metric}</p>
+                    <div className="eval-bar" aria-hidden="true">
+                      <span style={{ width: `${evalData.score_pct}%` }} />
+                    </div>
+                    <div className="eval-stat-row">
+                      <span className="eval-stat pass">{evalData.passed} pass</span>
+                      <span className="eval-stat fail">{evalData.total - evalData.passed} fail</span>
+                    </div>
+                  </div>
+                </div>
+
+                <ul className="eval-cases">
+                  {evalData.cases?.map((c, idx) => (
+                    <li key={c.question} className={c.pass ? 'pass' : 'fail'}>
+                      <div className="eval-case-top">
+                        <span className={`eval-badge ${c.pass ? 'pass' : 'fail'}`}>
+                          {c.pass ? 'Pass' : 'Fail'}
+                        </span>
+                        <span className="eval-case-num">Case {idx + 1}</span>
+                        <span className="eval-expect">expects Section {c.expect}</span>
+                        {c.best_l2 != null && (
+                          <span className="eval-l2">L2 {c.best_l2}</span>
+                        )}
+                      </div>
+                      <p className="eval-case-q">{c.question}</p>
+                      {c.top_excerpt ? (
+                        <p className="eval-case-excerpt">{c.top_excerpt}…</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="eval-empty">
+                <strong>{evalLoading ? 'Running retrieval checks…' : 'No eval results yet'}</strong>
+                <p>{evalLoading ? 'Searching the FAISS index for each gold case.' : 'Click Re-run eval to score retrieval.'}</p>
+              </div>
+            )}
           </section>
         ) : (
           <section className="panel">
@@ -445,16 +712,70 @@ function App() {
                 ))}
               </div>
               <div className="toolbar-actions">
-                <button type="button" className="action-btn" onClick={() => setMessages([])}>
-                  Clear chat
+                {mode === 'ask' && (
+                  <div className="lang-toggle" role="group" aria-label="Answer language">
+                    <span className="lang-label">Answer</span>
+                    <div className="lang-pills">
+                      <button
+                        type="button"
+                        className={language === 'en' ? 'active' : ''}
+                        onClick={() => setLanguage('en')}
+                      >
+                        English
+                      </button>
+                      <button
+                        type="button"
+                        className={language === 'hi' ? 'active' : ''}
+                        onClick={() => setLanguage('hi')}
+                      >
+                        हिंदी
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="tool-btn ghost"
+                  onClick={() => setMessages([])}
+                  title="Clear conversation"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M5 7h14M9 7V5.8A1.8 1.8 0 0 1 10.8 4h2.4A1.8 1.8 0 0 1 15 5.8V7m-7.5 0 0.7 11.2A1.8 1.8 0 0 0 10 20h4a1.8 1.8 0 0 0 1.8-1.8L16.5 7"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Clear
                 </button>
                 <button
                   type="button"
-                  className="action-btn"
+                  className="tool-btn accent"
                   onClick={() => void handleIngest()}
-                  disabled={ingesting}
+                  disabled={ingesting || uploading || loading}
+                  title="Usually takes 45–90 seconds for BNS.pdf"
                 >
-                  {ingesting ? 'Building index…' : 'Rebuild index'}
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M4 12a8 8 0 0 1 13.5-5.8M20 12a8 8 0 0 1-13.5 5.8"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M17 4.5v4h-4M7 19.5v-4h4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  {ingesting ? `${ingestPct}%` : 'Rebuild'}
                 </button>
               </div>
             </div>
@@ -464,16 +785,16 @@ function App() {
                 <div className="empty">
                   <strong>
                     {mode === 'ask'
-                      ? 'Start with a legal question'
+                      ? 'Ask anything about BNS'
                       : mode === 'compare'
-                        ? 'Look up a mapping'
-                        : 'Enter a section number'}
+                        ? 'Compare old IPC → new BNS'
+                        : 'Find a section by number'}
                   </strong>
                   {mode === 'ask'
-                    ? 'Example: “What is the punishment for cheating under the new law?”'
+                    ? 'Tip: try the quick questions above. Answers stream as they generate; chat history is sent for follow-ups.'
                     : mode === 'compare'
-                      ? 'Example: “302” or “What is 498A now?”'
-                      : 'Example: 103, 281, or 318'}
+                      ? 'Try 302, 420, 419, or 498A'
+                      : 'Try 103 (murder), 281 (rash driving), or 318 (cheating)'}
                 </div>
               )}
 
@@ -488,34 +809,46 @@ function App() {
                   {m.retrieval && (
                     <div className={`retrieval-meta ${m.retrieval.low_confidence ? 'warn' : 'ok'}`}>
                       {m.retrieval.low_confidence
-                        ? 'Low retrieval confidence — answer may be limited by matching chunks.'
-                        : `Grounded retrieval · best L2 ${m.retrieval.best_l2_distance}`}
+                        ? 'Weak match in PDF — answer may be limited'
+                        : `Answer grounded · ${m.retrieval.retrieval_mode || 'faiss'}${
+                            m.corpus?.corpus_version ? ` · corpus ${m.corpus.corpus_version}` : ''
+                          }`}
                     </div>
                   )}
 
                   {m.pipeline && m.pipeline.length > 0 && (
-                    <div className="mini-pipeline">
-                      {m.pipeline.map((step) => (
-                        <span key={step}>{step.replaceAll('_', ' ')}</span>
-                      ))}
-                    </div>
+                    <details className="tech-details">
+                      <summary>Technical details</summary>
+                      <div className="mini-pipeline">
+                        {m.pipeline.map((step) => (
+                          <span key={step}>{step.replaceAll('_', ' ')}</span>
+                        ))}
+                      </div>
+                      {m.retrieval?.best_l2_distance != null && (
+                        <p className="tech-note">Best match score (L2): {m.retrieval.best_l2_distance}</p>
+                      )}
+                    </details>
                   )}
 
                   {m.sources && m.sources.length > 0 && (
                     <div className="sources">
-                      <div className="sources-title">Sources from corpus</div>
+                      <div className="sources-title">Cited from PDF</div>
                       {m.sources.map((s, i) => (
                         <div
-                          className={`source relevance-${s.relevance || 'low'}`}
+                          className={`source relevance-${s.relevance || 'medium'}`}
                           key={`${m.id}-${i}`}
                         >
                           <span>
-                            {s.source_name || 'Source'}
-                            {s.page != null ? ` · p.${s.page + 1}` : ''}
-                            {s.relevance ? ` · ${s.relevance}` : ''}
-                            {s.l2_distance != null ? ` · L2 ${s.l2_distance}` : ''}
+                            {s.source_name || 'BNS.pdf'}
+                            {s.page != null ? ` · Page ${s.page + 1}` : ''}
+                            {s.corpus_version ? ` · ${s.corpus_version}` : ''}
+                            {s.relevance === 'high'
+                              ? ' · Strong match'
+                              : s.relevance === 'medium'
+                                ? ' · Related'
+                                : ' · Possible match'}
                           </span>
-                          {s.excerpt}
+                          <p>{s.excerpt}</p>
                         </div>
                       ))}
                     </div>
@@ -523,14 +856,14 @@ function App() {
 
                   {m.sectionMatches && m.sectionMatches.length > 0 && (
                     <div className="sources">
-                      <div className="sources-title">Matched PDF chunks</div>
+                      <div className="sources-title">Matched PDF text</div>
                       {m.sectionMatches.map((s, i) => (
                         <div className="source relevance-high" key={`${m.id}-sec-${i}`}>
                           <span>
                             {s.source_name}
-                            {s.page != null ? ` · p.${s.page + 1}` : ''}
+                            {s.page != null ? ` · Page ${s.page + 1}` : ''}
                           </span>
-                          {s.excerpt}
+                          <p>{s.excerpt}</p>
                         </div>
                       ))}
                     </div>
@@ -552,10 +885,13 @@ function App() {
                     </div>
                   )}
 
-                  {m.role === 'assistant' && (
+                  {m.role === 'assistant' && !m.streaming && (
                     <div className="msg-actions">
                       <button type="button" className="action-btn" onClick={() => void copyMessage(m)}>
                         {copiedId === m.id ? 'Copied' : 'Copy answer'}
+                      </button>
+                      <button type="button" className="action-btn" onClick={() => exportMarkdown(m)}>
+                        Export .md
                       </button>
                     </div>
                   )}
@@ -572,8 +908,15 @@ function App() {
                 </div>
               ))}
 
-              {loading && (
-                <div className="bubble assistant">Retrieving context and drafting an answer…</div>
+              {loading && messages[messages.length - 1]?.streaming !== true && (
+                <div className="bubble assistant loading-bubble">
+                  <span className="typing-dots" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  Searching your PDF and writing an answer…
+                </div>
               )}
               <div ref={bottomRef} />
             </div>
@@ -584,15 +927,21 @@ function App() {
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={
                   mode === 'ask'
-                    ? 'Ask about BNS punishment, offence, or procedure…'
+                    ? language === 'hi'
+                      ? 'BNS के बारे में हिंदी में पूछें…'
+                      : 'Ask about BNS punishment, offence, or procedure…'
                     : mode === 'compare'
                       ? 'Enter IPC/BNS section or offence name…'
                       : 'Enter section number, e.g. 103'
                 }
                 disabled={loading}
               />
-              <button className="send-btn" type="submit" disabled={loading || !input.trim()}>
-                {loading ? '…' : mode === 'ask' ? 'Ask' : mode === 'compare' ? 'Compare' : 'Find'}
+              <button
+                className="send-btn"
+                type="submit"
+                disabled={loading || ingesting || uploading || !input.trim()}
+              >
+                {loading ? 'Working…' : mode === 'ask' ? 'Ask' : mode === 'compare' ? 'Compare' : 'Find'}
               </button>
             </form>
           </section>
@@ -602,7 +951,9 @@ function App() {
 
         <p className="footer-note">
           {corpusMode === 'pdf'
-            ? `Grounded on uploaded PDF(s): ${sourceFiles.join(', ') || 'data/raw'}. Not legal advice.`
+            ? `Grounded on uploaded PDF(s): ${sourceFiles.join(', ') || 'data/raw'}${
+                corpusVersion ? ` · version ${corpusVersion}` : ''
+              }. Not legal advice.`
             : 'Currently on demo sample text. Upload a BNS PDF to switch to the real corpus. Not legal advice.'}
         </p>
       </div>

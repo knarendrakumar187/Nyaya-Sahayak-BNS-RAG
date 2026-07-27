@@ -14,3 +14,4 @@ faiss-cpu>=1.8.0
 pypdf>=4.0.0
 python-dotenv>=1.0.0
 sentence-transformers>=3.0.0
+slowapi>=0.1.9

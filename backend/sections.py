@@ -14,6 +14,7 @@ from langchain_core.documents import Document
 
 from backend.config import Settings, get_settings
 from backend.ingest import load_index
+from backend.text_clean import clean_excerpt
 
 
 def _normalize_section(section: str) -> str:
@@ -66,7 +67,7 @@ def find_section(section: str, settings: Settings | None = None, limit: int = 5)
                     or Path(str(doc.metadata.get("source", "BNS.pdf"))).name
                 ),
                 "page": int(page) if page is not None else None,
-                "excerpt": " ".join(doc.page_content.split())[:500],
+                "excerpt": clean_excerpt(doc.page_content, limit=320),
                 "corpus_mode": str(doc.metadata.get("corpus_mode", "unknown")),
             }
         )
