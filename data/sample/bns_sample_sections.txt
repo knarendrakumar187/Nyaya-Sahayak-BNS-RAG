@@ -1,0 +1,62 @@
+Bharatiya Nyaya Sanhita (BNS) — Sample curated excerpts for Nyaya-Sahayak demo
+NOTE: These are educational summaries for a student RAG project. Prefer official Gazette PDFs in data/raw/ for production-quality answers.
+
+================================================================================
+BNS Section 103 — Punishment for murder
+================================================================================
+Whoever commits murder shall be punished with death or imprisonment for life, and shall also be liable to fine.
+Learning note: Under the old Indian Penal Code (IPC), murder punishment was primarily under Section 302. In BNS, the corresponding provision is Section 103.
+
+================================================================================
+BNS Section 105 — Punishment for culpable homicide not amounting to murder
+================================================================================
+Whoever commits culpable homicide not amounting to murder shall be punished with imprisonment for life, or imprisonment of either description for a term which may extend to ten years, and shall also be liable to fine, depending on the circumstances set out in the Sanhita.
+Learning note: Related to old IPC Section 304.
+
+================================================================================
+BNS Section 106 — Causing death by negligence
+================================================================================
+Whoever causes death of any person by doing any rash or negligent act not amounting to culpable homicide shall be punished with imprisonment of either description for a term which may extend to five years, and shall also be liable to fine. Specific aggravated circumstances, including certain hit-and-run style fact patterns under allied laws, may attract higher accountability — always cross-check Motor Vehicles Act provisions for road accidents.
+Learning note: Related to old IPC Section 304A. For "hit-and-run" questions, mention both BNS negligence provisions and the Motor Vehicles Act.
+
+================================================================================
+BNS Section 109 — Attempt to murder
+================================================================================
+Whoever does any act with such intention or knowledge, and under such circumstances that, if he by that act caused death, he would be guilty of murder, shall be punished with imprisonment of either description for a term which may extend to ten years, and shall also be liable to fine; and if hurt is caused, the punishment may be higher as provided in the Sanhita.
+Learning note: Related to old IPC Section 307.
+
+================================================================================
+BNS Section 64 — Punishment for rape
+================================================================================
+Whoever commits rape shall be punished with rigorous imprisonment of either description for a term which shall not be less than ten years, but which may extend to imprisonment for life, and shall also be liable to fine, subject to the detailed clauses and aggravated forms defined in the Sanhita.
+Learning note: Related to old IPC Section 376. Sexual offences were reorganised in BNS.
+
+================================================================================
+BNS Section 318 — Cheating
+================================================================================
+Whoever cheats shall be punished with imprisonment of either description for a term which may extend to three years, or with fine, or with both. Where cheating involves dishonest inducement to deliver property, the Sanhita provides specific clauses and punishments.
+Learning note: The widely known IPC Section 420 maps conceptually to BNS Section 318 (cheating and dishonestly inducing delivery of property — verify exact clause numbering in the official text you ingest).
+
+================================================================================
+BNS Section 85 — Cruelty by husband or relatives of husband
+================================================================================
+Whoever, being the husband or the relative of the husband of a woman, subjects such woman to cruelty shall be punished with imprisonment for a term which may extend to three years and shall also be liable to fine. "Cruelty" includes wilful conduct likely to drive the woman to suicide or cause grave injury, and harassment related to unlawful dowry demands.
+Learning note: Related to old IPC Section 498A.
+
+================================================================================
+BNS Section 152 — Act endangering sovereignty, unity and integrity of India
+================================================================================
+Whoever purposely or knowingly, by words (spoken or written), signs, visible representation, electronic communication, or otherwise, excites or attempts to excite secession, armed rebellion, or subversive activities, or encourages feelings of separatist activities, or endangers sovereignty or unity and integrity of India, may be punished as provided in the Sanhita.
+Learning note: This replaces the older IPC sedition framework (Section 124A) with a differently framed offence. Do not equate them mechanically without reading the statutory text.
+
+================================================================================
+BNS Section 281 — Rash driving or riding on a public way
+================================================================================
+Whoever drives any vehicle, or rides, on any public way in a manner so rash or negligent as to endanger human life, or to be likely to cause hurt or injury to any other person, shall be punished with imprisonment of either description for a term which may extend to six months, or with fine, or with both.
+Learning note: Related to old IPC Section 279. For hit-and-run queries, combine with BNS 106 and Motor Vehicles Act duties to stop/report.
+
+================================================================================
+BNS Section 351 — Criminal intimidation
+================================================================================
+Whoever threatens another with any injury to person, reputation or property, or to the person or reputation of anyone in whom that person is interested, with intent to cause alarm or to cause that person to do any act they are not legally bound to do, commits criminal intimidation and shall be punished as provided in the Sanhita.
+Learning note: Related to old IPC Section 506.

@@ -1,0 +1,75 @@
+{
+  "description": "Curated IPC → BNS section mappings for Nyaya-Sahayak Compare feature. Verify against official Gazette / Ministry tables before relying on them for real cases.",
+  "mappings": [
+    {
+      "ipc_section": "302",
+      "bns_section": "103",
+      "title": "Murder",
+      "keywords": ["murder", "homicide", "killing"],
+      "notes": "Punishment for murder is largely aligned; check BNS 103 for exact wording."
+    },
+    {
+      "ipc_section": "304",
+      "bns_section": "105",
+      "title": "Culpable homicide not amounting to murder",
+      "keywords": ["culpable homicide", "manslaughter"],
+      "notes": "Related provisions also appear nearby in BNS Chapter VI."
+    },
+    {
+      "ipc_section": "307",
+      "bns_section": "109",
+      "title": "Attempt to murder",
+      "keywords": ["attempt to murder", "attempted murder"],
+      "notes": "Attempt offences are reorganised under BNS."
+    },
+    {
+      "ipc_section": "376",
+      "bns_section": "64",
+      "title": "Rape",
+      "keywords": ["rape", "sexual offence"],
+      "notes": "Sexual offences chapter was substantially restructured in BNS."
+    },
+    {
+      "ipc_section": "420",
+      "bns_section": "318",
+      "title": "Cheating and dishonestly inducing delivery of property",
+      "keywords": ["cheating", "fraud", "420"],
+      "notes": "Classic '420' maps to BNS 318."
+    },
+    {
+      "ipc_section": "498A",
+      "bns_section": "85",
+      "title": "Cruelty by husband or relatives of husband",
+      "keywords": ["dowry cruelty", "498a", "domestic cruelty"],
+      "notes": "Related cruelty provisions continue in BNS 85–86."
+    },
+    {
+      "ipc_section": "124A",
+      "bns_section": "152",
+      "title": "Acts endangering sovereignty / sedition-related replacement",
+      "keywords": ["sedition", "sovereignty", "124a"],
+      "notes": "IPC sedition (124A) was replaced; BNS 152 covers related sovereignty/security concerns with different framing."
+    },
+    {
+      "ipc_section": "279",
+      "bns_section": "281",
+      "title": "Rash driving or riding on a public way",
+      "keywords": ["rash driving", "hit and run", "road accident"],
+      "notes": "Hit-and-run consequences often involve Motor Vehicles Act + BNS rash/negligent provisions. Always check both."
+    },
+    {
+      "ipc_section": "304A",
+      "bns_section": "106",
+      "title": "Causing death by negligence",
+      "keywords": ["negligence", "death by negligence", "accident death"],
+      "notes": "Often relevant in road-accident / medical-negligence discussions."
+    },
+    {
+      "ipc_section": "506",
+      "bns_section": "351",
+      "title": "Criminal intimidation",
+      "keywords": ["threat", "intimidation", "criminal intimidation"],
+      "notes": "Intimidation offence renumbered under BNS."
+    }
+  ]
+}

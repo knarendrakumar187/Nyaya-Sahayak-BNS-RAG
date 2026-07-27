@@ -1,0 +1,49 @@
+:root {
+  --ink: #12263a;
+  --ink-soft: #3d556c;
+  --paper: #f3f6f4;
+  --panel: rgba(255, 255, 255, 0.72);
+  --copper: #b85c38;
+  --copper-deep: #8f4226;
+  --sage: #6f8f7a;
+  --line: rgba(18, 38, 58, 0.12);
+  --shadow: 0 24px 60px rgba(18, 38, 58, 0.12);
+  --radius: 18px;
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-body: 'Figtree', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(184, 92, 56, 0.16), transparent 55%),
+    radial-gradient(900px 500px at 95% 0%, rgba(111, 143, 122, 0.22), transparent 50%),
+    linear-gradient(165deg, #eef3f0 0%, #f7f4ef 45%, #e8eef5 100%);
+  background-attachment: fixed;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: rgba(184, 92, 56, 0.22);
+}

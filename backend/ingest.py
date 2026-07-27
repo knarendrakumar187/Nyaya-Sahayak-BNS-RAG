@@ -1,0 +1,152 @@
+"""
+PDF / text → chunks → embeddings → FAISS index.
+
+When PDFs exist in data/raw/, ONLY those PDFs are indexed (demo sample is skipped).
+Sample .txt files are a fallback for first-run demos without uploads.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader, TextLoader
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from backend.config import Settings, get_settings
+
+
+def get_embeddings(settings: Settings | None = None) -> HuggingFaceEmbeddings:
+    settings = settings or get_settings()
+    return HuggingFaceEmbeddings(model_name=settings.embedding_model)
+
+
+def load_documents(settings: Settings | None = None) -> tuple[list, dict]:
+    """
+    Load corpus documents.
+
+    Priority:
+    1. If any PDF is in data/raw/ → use ONLY those PDFs (real corpus)
+    2. Else fall back to data/sample/*.txt (demo)
+    """
+    settings = settings or get_settings()
+    docs = []
+
+    settings.raw_dir.mkdir(parents=True, exist_ok=True)
+    settings.sample_dir.mkdir(parents=True, exist_ok=True)
+
+    pdfs = sorted(settings.raw_dir.glob("*.pdf"))
+    mode = "pdf"
+    source_files: list[str] = []
+
+    if pdfs:
+        pdf_loader = DirectoryLoader(
+            str(settings.raw_dir),
+            glob="*.pdf",
+            loader_cls=PyPDFLoader,
+            show_progress=True,
+        )
+        docs.extend(pdf_loader.load())
+        source_files = [p.name for p in pdfs]
+    else:
+        mode = "sample"
+        txts = sorted(settings.sample_dir.glob("*.txt"))
+        if txts:
+            txt_loader = DirectoryLoader(
+                str(settings.sample_dir),
+                glob="*.txt",
+                loader_cls=TextLoader,
+                loader_kwargs={"encoding": "utf-8"},
+            )
+            docs.extend(txt_loader.load())
+            source_files = [p.name for p in txts]
+
+    info = {
+        "corpus_mode": mode,  # "pdf" | "sample"
+        "source_files": source_files,
+        "num_pages_or_files": len(docs),
+    }
+    return docs, info
+
+
+def build_index(settings: Settings | None = None) -> dict:
+    """Chunk documents, embed them, and persist a FAISS index."""
+    settings = settings or get_settings()
+    docs, info = load_documents(settings)
+    if not docs:
+        raise FileNotFoundError(
+            "No documents found. Upload a BNS PDF in the UI (saved to data/raw/) "
+            "or keep sample .txt files in data/sample/."
+        )
+
+    # Slightly larger chunks for real statute PDFs
+    chunk_size = settings.chunk_size if info["corpus_mode"] == "sample" else max(settings.chunk_size, 900)
+    chunk_overlap = (
+        settings.chunk_overlap if info["corpus_mode"] == "sample" else max(settings.chunk_overlap, 150)
+    )
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=["\n\n", "\n", ". ", " ", ""],
+    )
+    chunks = splitter.split_documents(docs)
+
+    # Tag every chunk so the UI can show it came from a real PDF vs demo
+    for chunk in chunks:
+        chunk.metadata["corpus_mode"] = info["corpus_mode"]
+        src = chunk.metadata.get("source", "")
+        chunk.metadata["source_name"] = Path(str(src)).name if src else "unknown"
+
+    embeddings = get_embeddings(settings)
+    vectorstore = FAISS.from_documents(chunks, embeddings)
+
+    settings.processed_dir.mkdir(parents=True, exist_ok=True)
+    vectorstore.save_local(str(settings.index_path))
+
+    meta = {
+        "ok": True,
+        "num_source_docs": len(docs),
+        "num_chunks": len(chunks),
+        "chunk_size": chunk_size,
+        "chunk_overlap": chunk_overlap,
+        "embedding_model": settings.embedding_model,
+        "index_path": str(settings.index_path),
+        **info,
+    }
+    (settings.processed_dir / "index_meta.json").write_text(
+        json.dumps(meta, indent=2), encoding="utf-8"
+    )
+    return meta
+
+
+def load_index(settings: Settings | None = None) -> FAISS:
+    settings = settings or get_settings()
+    if not settings.index_path.exists():
+        raise FileNotFoundError(
+            "Vector index missing. Upload a PDF or click Rebuild index first."
+        )
+    embeddings = get_embeddings(settings)
+    return FAISS.load_local(
+        str(settings.index_path),
+        embeddings,
+        allow_dangerous_deserialization=True,
+    )
+
+
+def read_index_meta(settings: Settings | None = None) -> dict | None:
+    settings = settings or get_settings()
+    meta_path = settings.processed_dir / "index_meta.json"
+    if not meta_path.exists():
+        return None
+    try:
+        return json.loads(meta_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+if __name__ == "__main__":
+    result = build_index()
+    print("Index built:", result)
