@@ -1,5 +1,4 @@
 # API-only image for Render Free (frontend on Vercel)
-# Uses CPU-only PyTorch so we don't pull huge CUDA wheels (OOM on 512 MB).
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -10,16 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# 1) CPU torch first (blocks CUDA nvidia-* packages)
-# 2) Then the rest of the app deps
+# CPU-only Torch first (avoids huge CUDA wheels that OOM on Free 512MB)
 RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
  && pip install --no-cache-dir -r requirements.txt
 
 COPY backend ./backend
 COPY data ./data
-COPY scripts/start_api.sh ./scripts/start_api.sh
-RUN chmod +x ./scripts/start_api.sh
 
 ENV PYTHONUNBUFFERED=1
 ENV SERVE_FRONTEND=false
@@ -31,6 +27,5 @@ ENV OPENBLAS_NUM_THREADS=1
 ENV HF_HOME=/tmp/hf
 ENV TRANSFORMERS_CACHE=/tmp/hf
 
-EXPOSE 10000
-
-CMD ["./scripts/start_api.sh"]
+# Render sets PORT (usually 10000). Bind 0.0.0.0 so health checks pass.
+CMD ["sh", "-c", "echo Starting on PORT=$PORT && uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1"]

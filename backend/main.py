@@ -1,17 +1,15 @@
 """
 Nyaya-Sahayak API
 
-Local:
-  uvicorn backend.main:app --reload --port 8000
-
-Production (serves API + built React UI when frontend/dist exists):
-  uvicorn backend.main:app --host 0.0.0.0 --port 8000
+Heavy ML deps (torch / sentence-transformers) are imported lazily inside routes
+so Render can bind PORT and pass health checks before embeddings load.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -24,43 +22,34 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from backend.compare import compare
 from backend.config import get_settings
-from backend.eval_api import run_eval
-from backend.ingest import build_index, load_index, read_index_meta
-from backend.jobs import get_job, start_ingest_job
 from backend.logging_mw import RequestIdMiddleware, logger
-from backend.rag import ask, ask_stream
-from backend.sections import find_section
 from backend.security import require_api_key
 
-MAX_UPLOAD_BYTES = 40 * 1024 * 1024  # 40 MB
+MAX_UPLOAD_BYTES = 40 * 1024 * 1024
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 
 limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
 
+def _read_meta_light(settings) -> dict:
+    """Read index_meta.json without importing torch/FAISS."""
+    meta_path = settings.processed_dir / "index_meta.json"
+    if not meta_path.exists():
+        return {}
+    try:
+        return json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Bind the HTTP port first; warm FAISS/embeddings in the background."""
-    import threading
-
     settings = get_settings()
     settings.raw_dir.mkdir(parents=True, exist_ok=True)
     settings.processed_dir.mkdir(parents=True, exist_ok=True)
-
-    def _warm() -> None:
-        try:
-            if settings.index_path.exists():
-                load_index(settings)
-                logger.info("FAISS index warmed")
-            else:
-                logger.info("No FAISS index yet — user must Rebuild index")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Index warm skipped: %s", exc)
-
-    threading.Thread(target=_warm, daemon=True).start()
+    logger.info("API ready — heavy ML loads on first Ask/Ingest")
     yield
 
 
@@ -110,9 +99,8 @@ class SectionRequest(BaseModel):
 
 @app.get("/api/health")
 def health():
-    """Liveness + index status (no rate limit — used by deploy platforms)."""
     settings = get_settings()
-    meta = read_index_meta(settings) or {}
+    meta = _read_meta_light(settings)
     return {
         "status": "ok",
         "index_ready": settings.index_path.exists(),
@@ -134,6 +122,8 @@ def health():
 @app.post("/api/ingest")
 @limiter.limit("10/minute")
 def ingest(request: Request, _: None = Depends(require_api_key)):
+    from backend.ingest import build_index
+
     settings = get_settings()
     try:
         meta = build_index(settings)
@@ -147,13 +137,16 @@ def ingest(request: Request, _: None = Depends(require_api_key)):
 @app.post("/api/ingest/async")
 @limiter.limit("10/minute")
 def ingest_async(request: Request, _: None = Depends(require_api_key)):
-    job_id = start_ingest_job()
-    return {"ok": True, "job_id": job_id}
+    from backend.jobs import start_ingest_job
+
+    return {"ok": True, "job_id": start_ingest_job()}
 
 
 @app.get("/api/ingest/status/{job_id}")
 @limiter.limit(_DEFAULT_LIMIT)
 def ingest_status(request: Request, job_id: str):
+    from backend.jobs import get_job
+
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Unknown ingest job.")
@@ -204,6 +197,8 @@ async def upload_pdf(
     rebuild_index: bool = True,
     _: None = Depends(require_api_key),
 ):
+    from backend.ingest import build_index
+
     settings = get_settings()
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
@@ -249,6 +244,8 @@ async def upload_pdf(
 @app.post("/api/ask")
 @limiter.limit(_DEFAULT_LIMIT)
 def ask_question(request: Request, body: AskRequest):
+    from backend.rag import ask
+
     settings = get_settings()
     try:
         history = [t.model_dump() for t in body.history]
@@ -270,6 +267,8 @@ def ask_question(request: Request, body: AskRequest):
 @app.post("/api/ask/stream")
 @limiter.limit(_DEFAULT_LIMIT)
 def ask_question_stream(request: Request, body: AskRequest):
+    from backend.rag import ask_stream
+
     settings = get_settings()
     history = [t.model_dump() for t in body.history]
 
@@ -302,6 +301,8 @@ def ask_question_stream(request: Request, body: AskRequest):
 @app.post("/api/compare")
 @limiter.limit(_DEFAULT_LIMIT)
 def compare_laws(request: Request, body: CompareRequest):
+    from backend.compare import compare
+
     settings = get_settings()
     try:
         return compare(body.query, settings)
@@ -314,6 +315,8 @@ def compare_laws(request: Request, body: CompareRequest):
 @app.post("/api/section")
 @limiter.limit(_DEFAULT_LIMIT)
 def section_lookup(request: Request, body: SectionRequest):
+    from backend.sections import find_section
+
     settings = get_settings()
     try:
         return find_section(body.section, settings)
@@ -328,6 +331,8 @@ def section_lookup(request: Request, body: SectionRequest):
 @app.get("/api/eval")
 @limiter.limit("5/minute")
 def eval_retrieval(request: Request):
+    from backend.eval_api import run_eval
+
     try:
         return run_eval()
     except FileNotFoundError as exc:

@@ -14,7 +14,6 @@ from pathlib import Path
 
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader, TextLoader
 from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from backend.config import Settings, get_settings
@@ -38,7 +37,10 @@ def corpus_version_hash(paths: list[Path]) -> str:
 
 
 @lru_cache(maxsize=1)
-def get_embeddings(model_name: str = "sentence-transformers/all-MiniLM-L6-v2") -> HuggingFaceEmbeddings:
+def get_embeddings(model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+    """Lazy-import so importing ingest does not load torch at API boot."""
+    from langchain_huggingface import HuggingFaceEmbeddings
+
     return HuggingFaceEmbeddings(model_name=model_name)
 
 
