@@ -1,8 +1,10 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+const RENDER_API = 'https://nyaya-sahayak-api.onrender.com'
+
+// Prefer explicit env; otherwise call Render directly (avoids Vercel SSO breaking /api proxy).
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || RENDER_API).replace(/\/$/, '')
 
 export function getApiBase() {
-  // Empty = same-origin /api (Vercel rewrite → Render, or Vite dev proxy)
-  return API_BASE || '(same-origin /api → Render proxy)'
+  return API_BASE
 }
 
 function apiUrl(path) {
@@ -27,12 +29,15 @@ async function parseError(res) {
 
 async function apiFetch(path, options = {}) {
   try {
-    return await fetch(apiUrl(path), options)
+    return await fetch(apiUrl(path), {
+      ...options,
+      mode: 'cors',
+      credentials: 'omit',
+    })
   } catch (err) {
-    const tip = API_BASE
-      ? `Cannot reach ${API_BASE}. On Vercel, delete VITE_API_BASE_URL so /api is proxied.`
-      : 'Cannot reach /api (Vercel→Render proxy). Wake https://nyaya-sahayak-api.onrender.com/api/health then retry.'
-    throw new Error(`${tip} (${err instanceof Error ? err.message : 'network error'})`)
+    throw new Error(
+      `Cannot reach ${API_BASE}. Open ${RENDER_API}/api/health in a new tab to wake Render, wait for JSON, then retry. (${err instanceof Error ? err.message : 'network error'})`,
+    )
   }
 }
 
@@ -42,12 +47,14 @@ export async function getHealth() {
   return res.json()
 }
 
-/** Wake Render Free cold starts; retries for up to ~60s. */
-export async function wakeApi(attempts = 8, delayMs = 8000) {
+/** Wake Render Free directly (can take up to ~90s when asleep). */
+export async function wakeApi(attempts = 12, delayMs = 8000) {
   let lastErr = new Error('API unreachable')
   for (let i = 0; i < attempts; i++) {
     try {
-      return await getHealth()
+      const res = await fetch(`${RENDER_API}/api/health`, { mode: 'cors', credentials: 'omit' })
+      if (!res.ok) throw new Error(await parseError(res))
+      return res.json()
     } catch (err) {
       lastErr = err instanceof Error ? err : new Error(String(err))
       if (i < attempts - 1) {
@@ -95,12 +102,10 @@ function bytesToBase64(bytes) {
   return btoa(binary)
 }
 
-/**
- * Chunked upload for Render Free.
- * onProgress({ pct, message })
- */
 export async function uploadPdfChunked(file, { onProgress } = {}) {
   const report = (pct, message) => onProgress?.({ pct, message })
+  report(2, 'Waking Render…')
+  await wakeApi()
   report(5, 'Starting chunked upload…')
 
   const initRes = await apiFetch('/api/upload/init', {
@@ -112,24 +117,29 @@ export async function uploadPdfChunked(file, { onProgress } = {}) {
   const { upload_id } = await initRes.json()
 
   const buf = new Uint8Array(await file.arrayBuffer())
-  const chunkSize = 120 * 1024
+  const chunkSize = 100 * 1024
   const total = Math.ceil(buf.length / chunkSize) || 1
 
   for (let i = 0; i < total; i++) {
     const slice = buf.subarray(i * chunkSize, (i + 1) * chunkSize)
     const data_b64 = bytesToBase64(slice)
     let chunkRes
-    for (let attempt = 0; attempt < 3; attempt++) {
-      chunkRes = await apiFetch('/api/upload/chunk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ upload_id, index: i, data_b64 }),
-      })
-      if (chunkRes.ok) break
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 1500))
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        chunkRes = await apiFetch('/api/upload/chunk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ upload_id, index: i, data_b64 }),
+        })
+        if (chunkRes.ok) break
+      } catch (err) {
+        if (attempt === 3) throw err
+        await wakeApi(3, 5000)
+      }
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 2000))
     }
     if (!chunkRes?.ok) throw new Error(await parseError(chunkRes))
-    report(10 + Math.round((80 * (i + 1)) / total), `Uploading chunk ${i + 1}/${total}…`)
+    report(8 + Math.round((80 * (i + 1)) / total), `Uploading chunk ${i + 1}/${total}…`)
   }
 
   report(92, 'Finalizing PDF…')
@@ -181,6 +191,7 @@ export async function askQuestionStream(
   question,
   { language = 'en', history = [], hybrid = true, onToken, onStatus, onFinal } = {},
 ) {
+  await wakeApi(4, 5000)
   const res = await apiFetch('/api/ask/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
