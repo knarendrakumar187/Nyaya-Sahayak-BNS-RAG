@@ -211,18 +211,32 @@ function App() {
       return
     }
 
+    // Render Free: upload + rebuild in one request often times out ("Failed to fetch").
+    // Upload first, then rebuild asynchronously.
     setUploading(true)
+    setIngesting(true)
+    setIngestPct(5)
+    setIngestMsg('Waking API…')
     setError(null)
     try {
+      await getHealth()
       const results = []
       for (const file of pdfs) {
-        results.push(await uploadPdf(file, true))
+        setIngestMsg(`Uploading ${file.name}…`)
+        // rebuild_index=false keeps the HTTP request short
+        results.push(await uploadPdf(file, false))
       }
-      setIndexReady(true)
       await refreshDocs()
+      setIngestMsg('Building search index…')
+      setIngestPct(15)
+      const { job_id } = await startIngestJob()
+      const meta = await pollIngest(job_id)
+      setIndexReady(true)
+      setCorpusMode(meta?.corpus_mode ?? 'pdf')
+      setSourceFiles(meta?.source_files ?? [])
+      setCorpusVersion(meta?.corpus_version ?? null)
       await refreshHealth()
-      const last = results[results.length - 1]
-      const chunks = last.ingest?.num_chunks
+      const chunks = meta?.num_chunks
       setMessages((prev) => [
         ...prev,
         {
@@ -230,23 +244,30 @@ function App() {
           role: 'assistant',
           content:
             results.length === 1
-              ? `Uploaded “${results[0].filename}” and rebuilt a REAL PDF index${chunks ? ` (${chunks} chunks)` : ''}. Demo sample is skipped while PDFs exist.`
-              : `Uploaded ${results.length} PDFs and rebuilt a REAL PDF index${chunks ? ` (${chunks} chunks)` : ''}.`,
+              ? `Uploaded “${results[0].filename}” and indexed${chunks ? ` (${chunks} chunks)` : ''}. Demo sample is skipped while PDFs exist.`
+              : `Uploaded ${results.length} PDFs and indexed${chunks ? ` (${chunks} chunks)` : ''}.`,
         },
       ])
       showToast(
         results.length === 1
-          ? `Uploaded ${results[0].filename} and indexed successfully`
-          : `Uploaded ${results.length} PDFs and indexed successfully`,
+          ? `Uploaded ${results[0].filename} and indexed`
+          : `Uploaded ${results.length} PDFs and indexed`,
         'ok',
       )
       setMode('ask')
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Upload failed'
+      const raw = err instanceof Error ? err.message : 'Upload failed'
+      const message =
+        raw === 'Failed to fetch' || /network|fetch/i.test(raw)
+          ? 'Upload failed: API timed out or is waking up. Wait 1 minute, open the API health URL once, then try a smaller PDF (or Rebuild without upload first).'
+          : raw
       setError(message)
       showToast(message, 'error')
     } finally {
       setUploading(false)
+      setIngesting(false)
+      setIngestPct(0)
+      setIngestMsg('')
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
@@ -791,7 +812,7 @@ function App() {
                         : 'Find a section by number'}
                   </strong>
                   {mode === 'ask'
-                    ? 'Tip: try the quick questions above. Answers stream as they generate; chat history is sent for follow-ups.'
+                    ? 'Tip: the 4 interview chips use a fast FAQ path (work without a PDF). For PDF-grounded answers, upload BNS.pdf then Rebuild — or ask something like “rash driving punishment”.'
                     : mode === 'compare'
                       ? 'Try 302, 420, 419, or 498A'
                       : 'Try 103 (murder), 281 (rash driving), or 318 (cheating)'}
@@ -808,11 +829,13 @@ function App() {
 
                   {m.retrieval && (
                     <div className={`retrieval-meta ${m.retrieval.low_confidence ? 'warn' : 'ok'}`}>
-                      {m.retrieval.low_confidence
-                        ? 'Weak match in PDF — answer may be limited'
-                        : `Answer grounded · ${m.retrieval.retrieval_mode || 'faiss'}${
-                            m.corpus?.corpus_version ? ` · corpus ${m.corpus.corpus_version}` : ''
-                          }`}
+                      {m.retrieval.metric === 'faq_fast_path' || m.retrieval.retrieval_mode === 'faq'
+                        ? 'FAQ demo answer (works without uploading a PDF)'
+                        : m.retrieval.low_confidence
+                          ? 'Weak match in PDF — answer may be limited'
+                          : `Answer grounded · ${m.retrieval.retrieval_mode || 'faiss'}${
+                              m.corpus?.corpus_version ? ` · corpus ${m.corpus.corpus_version}` : ''
+                            }`}
                     </div>
                   )}
 
