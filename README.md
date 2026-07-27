@@ -53,36 +53,39 @@ Open http://localhost:5173 — Vite proxies `/api` → `:8000`.
 
 ---
 
-## Deploy (recommended: Railway or Render + Docker)
+## Deploy on Render (free)
 
-One service = **React UI + FastAPI + FAISS** on a single URL. Uses the project `Dockerfile`.
+One Docker service = **React UI + FastAPI + FAISS** at `https://….onrender.com`.
 
-**Needs:** ~1–2 GB RAM, `GOOGLE_API_KEY`, health path `/api/health`.
+### Steps
 
-### Option A — Railway
+1. Make sure latest code is on GitHub:  
+   https://github.com/knarendrakumar187/Nyaya-Sahayak-BNS-RAG  
 
-1. Push this repo to GitHub  
-2. Open [railway.app/new](https://railway.app/new) → **Deploy from GitHub** → select this repo  
-3. Railway uses `railway.toml` + `Dockerfile`  
-4. **Variables** → add:
+2. Open [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**  
+   - Connect GitHub → select **Nyaya-Sahayak-BNS-RAG**  
+   - Render reads `render.yaml` (Free plan)
+
+   **Or** without Blueprint: **New** → **Web Service** → this repo → **Docker** → instance **Free**
+
+3. Set secret env var:
 
 | Variable | Value |
 |----------|--------|
 | `GOOGLE_API_KEY` | your Gemini key |
-| `LLM_PROVIDER` | `gemini` |
-| `SERVE_FRONTEND` | `true` |
-| `CORS_ORIGINS` | `*` |
 
-5. Optional but recommended: add a **Volume** at `/app/data` so PDFs + FAISS survive redeploys  
-6. Generate a public domain → open it → **Rebuild index** (or upload BNS PDF)
+(Other vars are already in `render.yaml`.)
 
-### Option B — Render
+4. Click **Apply** / **Deploy** — first build can take **10–20 minutes**
 
-1. Push this repo to GitHub  
-2. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** (uses `render.yaml`), or **Web Service** with Docker  
-3. Set the same env vars as Railway; keep `GOOGLE_API_KEY` secret  
-4. Disk at `/app/data` is defined in `render.yaml`  
-5. Open the `.onrender.com` URL → **Rebuild index**
+5. Open the `.onrender.com` URL → wait until `/api/health` works → click **Rebuild index**  
+   Prefer **sample text** first (don’t upload a huge PDF on Free)
+
+### Free-tier limits (important)
+
+- **512 MB RAM** — embedding model may cause **Out of Memory** on rebuild; if so, use sample corpus only or upgrade to Starter  
+- Sleeps after **~15 minutes** idle — first request after sleep is slow (~1 min)  
+- No persistent disk on Free — index is lost on redeploy (rebuild again)  
 
 ### Local Docker (same image)
 
@@ -92,15 +95,6 @@ docker compose up --build -d
 ```
 
 Open http://localhost:8000 · health: `/api/health`
-
-### After deploy
-
-1. `/api/health` → `"status":"ok"`  
-2. UI loads on the same host  
-3. **Rebuild index** once (first load can take 1–2 min for embeddings)  
-4. Optional: set `API_KEY` to lock upload/delete  
-
-**Do not commit `.env`.** Rotate any key that was ever pushed to GitHub.
 
 ---
 

@@ -1,7 +1,11 @@
+# Render Blueprint — Free web service (UI + API in one Docker image)
+# https://dashboard.render.com → New → Blueprint
+
 services:
   - type: web
     name: nyaya-sahayak
     runtime: docker
+    plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
     envVars:
@@ -19,7 +23,14 @@ services:
         value: "true"
       - key: API_KEY
         sync: false
-    disk:
-      name: nyaya-data
-      mountPath: /app/data
-      sizeGB: 2
+      # Keep memory low on Free (512 MB)
+      - key: TOKENIZERS_PARALLELISM
+        value: "false"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"
+      - key: HF_HOME
+        value: /tmp/hf

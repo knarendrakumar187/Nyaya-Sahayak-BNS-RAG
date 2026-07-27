@@ -27,11 +27,17 @@ COPY --from=web /web/dist ./frontend/dist
 ENV PYTHONUNBUFFERED=1
 ENV SERVE_FRONTEND=true
 ENV CORS_ORIGINS=*
+ENV TOKENIZERS_PARALLELISM=false
+ENV OMP_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
+ENV OPENBLAS_NUM_THREADS=1
+ENV HF_HOME=/tmp/hf
 
 EXPOSE 8000
 
 # Railway/Render inject PORT; local/Docker default 8000
-HEALTHCHECK --interval=30s --timeout=8s --start-period=120s --retries=3 \
+# Free tiers are slow to boot — long start-period
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=5 \
   CMD python -c "import os,urllib.request; p=os.environ.get('PORT','8000'); urllib.request.urlopen(f'http://127.0.0.1:{p}/api/health')"
 
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
