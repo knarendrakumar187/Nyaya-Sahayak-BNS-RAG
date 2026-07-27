@@ -77,6 +77,19 @@ app.add_middleware(
 _DEFAULT_LIMIT = _boot.rate_limit or "30/minute"
 
 
+@app.get("/")
+def root():
+    """Friendly landing for the API-only Render service."""
+    return {
+        "app": "Nyaya-Sahayak",
+        "version": APP_VERSION,
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/api/health",
+        "note": "Frontend is on Vercel. Point VITE_API_BASE_URL to this host.",
+    }
+
+
 class ChatTurn(BaseModel):
     role: str = Field(..., pattern="^(user|assistant)$")
     content: str = Field(..., min_length=1, max_length=4000)
