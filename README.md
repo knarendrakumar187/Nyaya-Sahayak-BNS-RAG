@@ -53,48 +53,56 @@ Open http://localhost:5173 — Vite proxies `/api` → `:8000`.
 
 ---
 
-## Deploy on Render (free)
+## Deploy (free): Vercel UI + Render API
 
-One Docker service = **React UI + FastAPI + FAISS** at `https://….onrender.com`.
+Best free setup for this project:
 
-### Steps
+| Part | Host | Why |
+|------|------|-----|
+| **Frontend** (React/Vite) | **Vercel** | Free, fast, always on |
+| **Backend** (FastAPI + FAISS) | **Render Free** | Free Python/Docker; sleeps after idle |
 
-1. Make sure latest code is on GitHub:  
-   https://github.com/knarendrakumar187/Nyaya-Sahayak-BNS-RAG  
+### Step 1 — Deploy API on Render
 
-2. Open [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**  
-   - Connect GitHub → select **Nyaya-Sahayak-BNS-RAG**  
-   - Render reads `render.yaml` (Free plan)
+1. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**  
+2. Connect **Nyaya-Sahayak-BNS-RAG** (uses `render.yaml` + `Dockerfile.api`)  
+3. Set secret **`GOOGLE_API_KEY`**  
+4. Deploy → copy your API URL, e.g. `https://nyaya-sahayak-api.onrender.com`  
+5. Check `https://YOUR-API.onrender.com/api/health`
 
-   **Or** without Blueprint: **New** → **Web Service** → this repo → **Docker** → instance **Free**
+First wake after idle can take ~1 minute (Free spins down).
 
-3. Set secret env var:
+### Step 2 — Deploy UI on Vercel
 
-| Variable | Value |
-|----------|--------|
-| `GOOGLE_API_KEY` | your Gemini key |
+1. [vercel.com/new](https://vercel.com/new) → import **Nyaya-Sahayak-BNS-RAG**  
+2. Root `vercel.json` builds the `frontend/` folder  
+3. **Environment Variables** (Production + Preview):
 
-(Other vars are already in `render.yaml`.)
-
-4. Click **Apply** / **Deploy** — first build can take **10–20 minutes**
-
-5. Open the `.onrender.com` URL → wait until `/api/health` works → click **Rebuild index**  
-   Prefer **sample text** first (don’t upload a huge PDF on Free)
-
-### Free-tier limits (important)
-
-- **512 MB RAM** — embedding model may cause **Out of Memory** on rebuild; if so, use sample corpus only or upgrade to Starter  
-- Sleeps after **~15 minutes** idle — first request after sleep is slow (~1 min)  
-- No persistent disk on Free — index is lost on redeploy (rebuild again)  
-
-### Local Docker (same image)
-
-```bash
-copy .env.example .env   # set GOOGLE_API_KEY
-docker compose up --build -d
+```
+VITE_API_BASE_URL=https://YOUR-API.onrender.com
 ```
 
-Open http://localhost:8000 · health: `/api/health`
+(no trailing slash)
+
+4. Deploy → open the Vercel URL  
+5. In the app: **Rebuild index** once (API must be awake)
+
+### Local still works
+
+```bash
+# API
+uvicorn backend.main:app --reload --port 8000
+
+# UI (proxies /api → :8000 — no VITE_API_BASE_URL needed)
+cd frontend && npm run dev
+```
+
+### Notes
+
+- Render Free = **512 MB**; big PDF ingest may OOM — start with sample corpus  
+- After redeploy, rebuild the index again (no free persistent disk)  
+- Optional: set Render `CORS_ORIGINS` to your exact `https://….vercel.app` URL  
+- **Do not commit `.env`**
 
 ---
 
@@ -106,8 +114,11 @@ frontend/          React UI (Vite)
 data/sample/       Demo BNS text (works without PDF)
 data/mappings/     IPC→BNS table (~40 mappings)
 data/raw/          Uploaded PDFs (gitignored)
-Dockerfile         Production: UI build + API
-docker-compose.yml One-service deploy
+Dockerfile         Optional all-in-one (UI+API)
+Dockerfile.api     Render Free API-only image
+render.yaml        Render Blueprint (API)
+vercel.json        Vercel frontend build
+docker-compose.yml Local one-service Docker
 ```
 
 ---

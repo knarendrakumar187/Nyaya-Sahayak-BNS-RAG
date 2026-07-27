@@ -1,12 +1,13 @@
-# Render Blueprint — Free web service (UI + API in one Docker image)
+# Render Blueprint — Free FastAPI backend only
+# Frontend: deploy separately on Vercel
 # https://dashboard.render.com → New → Blueprint
 
 services:
   - type: web
-    name: nyaya-sahayak
+    name: nyaya-sahayak-api
     runtime: docker
     plan: free
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./Dockerfile.api
     healthCheckPath: /api/health
     envVars:
       - key: GOOGLE_API_KEY
@@ -16,14 +17,14 @@ services:
       - key: GEMINI_MODEL
         value: gemini-3.1-flash-lite
       - key: SERVE_FRONTEND
-        value: "true"
+        value: "false"
+      # Allow Vercel UI (and local). Tighten to your exact Vercel URL later if you want.
       - key: CORS_ORIGINS
         value: "*"
       - key: ENABLE_AUTH
         value: "true"
       - key: API_KEY
         sync: false
-      # Keep memory low on Free (512 MB)
       - key: TOKENIZERS_PARALLELISM
         value: "false"
       - key: OMP_NUM_THREADS
