@@ -136,15 +136,16 @@ function App() {
   }, [mode])
 
   async function pollIngest(jobId) {
-    for (let i = 0; i < 120; i++) {
+    // Render Free indexing can take several minutes
+    for (let i = 0; i < 240; i++) {
       const job = await getIngestStatus(jobId)
       setIngestPct(job.pct ?? 0)
       setIngestMsg(job.message || job.stage || '')
       if (job.status === 'done') return job.result
       if (job.status === 'error') throw new Error(job.error || 'Ingest failed')
-      await new Promise((r) => setTimeout(r, 800))
+      await new Promise((r) => setTimeout(r, 1500))
     }
-    throw new Error('Ingest timed out')
+    throw new Error('Ingest timed out — try a smaller PDF (first ~30 pages are indexed on Free).')
   }
 
   async function handleIngest() {
@@ -218,10 +219,9 @@ function App() {
       return
     }
 
-    const tooBig = pdfs.find((f) => f.size > 8 * 1024 * 1024)
+    const tooBig = pdfs.find((f) => f.size > 15 * 1024 * 1024)
     if (tooBig) {
-      const msg =
-        `“${tooBig.name}” is larger than 8 MB. Render Free often times out on big Gazette PDFs. Use the pre-built sample index (Ask after API health shows index_ready:true), or upload a short PDF excerpt under 8 MB.`
+      const msg = `“${tooBig.name}” is over 15 MB. On Render Free, use a smaller PDF (or split the Gazette). We only index the first ~30 pages anyway.`
       setError(msg)
       showToast(msg, 'error')
       return
@@ -233,7 +233,7 @@ function App() {
     setIngestMsg('Waking Render API (can take up to 1 min)…')
     setError(null)
     try {
-      const health = await wakeApi()
+      await wakeApi(6, 10000)
       setIngestPct(20)
       const results = []
       for (const file of pdfs) {
@@ -241,48 +241,33 @@ function App() {
         results.push(await uploadPdf(file, false))
       }
       await refreshDocs()
-      setIngestPct(40)
-      setIngestMsg('PDF saved. Building index (may fail on Free RAM)…')
-
-      try {
-        const { job_id } = await startIngestJob()
-        const meta = await pollIngest(job_id)
-        setIndexReady(true)
-        setCorpusMode(meta?.corpus_mode ?? 'pdf')
-        setSourceFiles(meta?.source_files ?? [])
-        setCorpusVersion(meta?.corpus_version ?? null)
-        showToast(`Indexed ${meta?.num_chunks ?? ''} chunks`, 'ok')
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: `Uploaded and indexed ${results.map((r) => r.filename).join(', ')} (${meta?.num_chunks} chunks).`,
-          },
-        ])
-      } catch {
-        // Upload succeeded; live index build often OOMs on Render Free
-        showToast('PDF uploaded, but live indexing failed on Free tier. Use sample index or redeploy API with pre-built index.', 'error')
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content:
-              `Saved ${results.map((r) => r.filename).join(', ')}, but indexing timed out/OOM on Render Free. ` +
-              (health?.index_ready
-                ? 'Your pre-built sample index is still available for Ask.'
-                : 'Redeploy the API so the sample index is baked in, then check /api/health for index_ready:true.'),
-          },
-        ])
-      }
+      setIngestPct(35)
+      setIngestMsg('Indexing PDF (first ~30 pages on Free)…')
+      const { job_id } = await startIngestJob()
+      const meta = await pollIngest(job_id)
+      setIndexReady(true)
+      setCorpusMode(meta?.corpus_mode ?? 'pdf')
+      setSourceFiles(meta?.source_files ?? [])
+      setCorpusVersion(meta?.corpus_version ?? null)
       await refreshHealth()
+      const capNote = meta?.chunks_capped
+        ? ` (Free tier capped at ${meta.max_index_chunks || 150} chunks / first pages)`
+        : ''
+      showToast(`PDF indexed (${meta?.num_chunks} chunks)`, 'ok')
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `Uploaded ${results.map((r) => r.filename).join(', ')} and built a PDF index with ${meta?.num_chunks} chunks${capNote}. Nav should show the PDF name instead of sample text.`,
+        },
+      ])
       setMode('ask')
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'Upload failed'
       const message =
         raw === 'Failed to fetch' || /network|fetch/i.test(raw)
-          ? `Cannot reach API at ${getApiBase()}. Open https://nyaya-sahayak-api.onrender.com/api/health first (wakes Render). Then use Ask — sample index is already built; skip PDF upload on Free.`
+          ? `Cannot reach API at ${getApiBase()}. Open https://nyaya-sahayak-api.onrender.com/api/health to wake it, wait for JSON, then retry upload with a PDF under 15 MB.`
           : raw
       setError(message)
       showToast(message, 'error')
@@ -619,15 +604,13 @@ function App() {
                 {ingesting ? `Building… ${ingestPct}%` : 'Rebuild index'}
               </button>
               <p className="upload-hint">
-                <strong>Render Free:</strong> your sample index is already live — skip PDF upload.
-                Use <strong>Ask</strong> instead. Large Gazette uploads usually time out on Free.
+                <strong>Upload PDF:</strong> wake the API first (
+                <a href="https://nyaya-sahayak-api.onrender.com/api/health" target="_blank" rel="noreferrer">
+                  /api/health
+                </a>
+                ), then upload a file under 15 MB. On Render Free we index about the{' '}
+                <strong>first 30 pages</strong> only so it can finish.
                 API: <code>{getApiBase()}</code>
-                {corpusVersion ? (
-                  <>
-                    {' '}
-                    · corpus <code>{corpusVersion}</code>
-                  </>
-                ) : null}
               </p>
             </div>
 
@@ -814,7 +797,7 @@ function App() {
                         : 'Find a section by number'}
                   </strong>
                   {mode === 'ask'
-                    ? 'Tip: try a chip above, or ask about BNS. Sample index is ready — no PDF upload required on Free.'
+                    ? 'Tip: upload a BNS PDF (Upload tab), wait for indexing, then Ask. Free tier indexes ~first 30 pages.'
                     : mode === 'compare'
                       ? 'Try 302, 420, 419, or 498A'
                       : 'Try 103 (murder), 281 (rash driving), or 318 (cheating)'}

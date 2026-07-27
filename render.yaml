@@ -35,3 +35,10 @@ services:
         value: "1"
       - key: HF_HOME
         value: /tmp/hf
+      # Memory-safe PDF indexing on Free (first N pages / chunks only)
+      - key: MAX_PDF_PAGES
+        value: "30"
+      - key: MAX_INDEX_CHUNKS
+        value: "150"
+      - key: EMBED_BATCH_SIZE
+        value: "16"

@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     chunk_overlap: int = 80
     top_k: int = 4
     max_expand_queries: int = 3
+    # Render Free memory guards (0 = unlimited)
+    max_pdf_pages: int = 30
+    max_index_chunks: int = 150
+    embed_batch_size: int = 24
 
     def model_post_init(self, __context) -> None:
         self.google_api_key = self.google_api_key.strip().strip("\"'")

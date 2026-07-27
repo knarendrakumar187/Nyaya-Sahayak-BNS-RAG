@@ -82,6 +82,9 @@ def load_documents(settings: Settings | None = None) -> tuple[list, dict]:
         )
         docs.extend(pdf_loader.load())
         source_files = [p.name for p in pdfs]
+        # Cap pages so Render Free (512 MB) can finish indexing
+        if settings.max_pdf_pages and len(docs) > settings.max_pdf_pages:
+            docs = docs[: settings.max_pdf_pages]
     else:
         mode = "sample"
         txts = sorted(settings.sample_dir.glob("*.txt"))
@@ -101,6 +104,7 @@ def load_documents(settings: Settings | None = None) -> tuple[list, dict]:
         "source_files": source_files,
         "num_pages_or_files": len(docs),
         "corpus_version": corpus_version_hash(file_paths) if file_paths else None,
+        "max_pdf_pages": settings.max_pdf_pages or None,
     }
     return docs, info
 
@@ -115,11 +119,13 @@ def build_index(settings: Settings | None = None) -> dict:
             "or keep sample .txt files in data/sample/."
         )
 
-    # Slightly larger chunks for real statute PDFs
-    chunk_size = settings.chunk_size if info["corpus_mode"] == "sample" else max(settings.chunk_size, 900)
-    chunk_overlap = (
-        settings.chunk_overlap if info["corpus_mode"] == "sample" else max(settings.chunk_overlap, 150)
-    )
+    # Slightly larger chunks for real statute PDFs; keep smaller on capped Free builds
+    if info["corpus_mode"] == "sample":
+        chunk_size = settings.chunk_size
+        chunk_overlap = settings.chunk_overlap
+    else:
+        chunk_size = max(settings.chunk_size, 800)
+        chunk_overlap = max(settings.chunk_overlap, 120)
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -128,6 +134,13 @@ def build_index(settings: Settings | None = None) -> dict:
     )
     chunks = splitter.split_documents(docs)
 
+    if settings.max_index_chunks and len(chunks) > settings.max_index_chunks:
+        chunks = chunks[: settings.max_index_chunks]
+        info["chunks_capped"] = True
+        info["max_index_chunks"] = settings.max_index_chunks
+    else:
+        info["chunks_capped"] = False
+
     # Tag every chunk so the UI can show it came from a real PDF vs demo
     for chunk in chunks:
         chunk.metadata["corpus_mode"] = info["corpus_mode"]
@@ -135,7 +148,17 @@ def build_index(settings: Settings | None = None) -> dict:
         chunk.metadata["source_name"] = Path(str(src)).name if src else "unknown"
 
     embeddings = get_embeddings(settings.embedding_model)
-    vectorstore = FAISS.from_documents(chunks, embeddings)
+    batch = max(8, settings.embed_batch_size)
+    vectorstore = None
+    for i in range(0, len(chunks), batch):
+        part = chunks[i : i + batch]
+        if vectorstore is None:
+            vectorstore = FAISS.from_documents(part, embeddings)
+        else:
+            vectorstore.add_documents(part)
+
+    if vectorstore is None:
+        raise RuntimeError("No chunks to index.")
 
     settings.processed_dir.mkdir(parents=True, exist_ok=True)
     vectorstore.save_local(str(settings.index_path))
