@@ -10,6 +10,7 @@ import {
   runEval,
   startIngestJob,
   uploadPdf,
+  wakeApi,
 } from './api'
 import { AnswerBody } from './AnswerBody'
 import { ProgressOverlay, Toast } from './ProgressUI'
@@ -152,8 +153,7 @@ function App() {
     setIngestMsg('Waking API…')
     setError(null)
     try {
-      // Wake Render Free (cold start) before starting the job
-      await getHealth()
+      await wakeApi()
       setIngestMsg('Starting index job…')
       const { job_id } = await startIngestJob()
       const meta = await pollIngest(job_id)
@@ -218,55 +218,71 @@ function App() {
       return
     }
 
-    // Render Free: upload + rebuild in one request often times out ("Failed to fetch").
-    // Upload first, then rebuild asynchronously.
+    const tooBig = pdfs.find((f) => f.size > 8 * 1024 * 1024)
+    if (tooBig) {
+      const msg =
+        `“${tooBig.name}” is larger than 8 MB. Render Free often times out on big Gazette PDFs. Use the pre-built sample index (Ask after API health shows index_ready:true), or upload a short PDF excerpt under 8 MB.`
+      setError(msg)
+      showToast(msg, 'error')
+      return
+    }
+
     setUploading(true)
     setIngesting(true)
     setIngestPct(5)
-    setIngestMsg('Waking API…')
+    setIngestMsg('Waking Render API (can take up to 1 min)…')
     setError(null)
     try {
-      await getHealth()
+      const health = await wakeApi()
+      setIngestPct(20)
       const results = []
       for (const file of pdfs) {
         setIngestMsg(`Uploading ${file.name}…`)
-        // rebuild_index=false keeps the HTTP request short
         results.push(await uploadPdf(file, false))
       }
       await refreshDocs()
-      setIngestMsg('Building search index…')
-      setIngestPct(15)
-      const { job_id } = await startIngestJob()
-      const meta = await pollIngest(job_id)
-      setIndexReady(true)
-      setCorpusMode(meta?.corpus_mode ?? 'pdf')
-      setSourceFiles(meta?.source_files ?? [])
-      setCorpusVersion(meta?.corpus_version ?? null)
+      setIngestPct(40)
+      setIngestMsg('PDF saved. Building index (may fail on Free RAM)…')
+
+      try {
+        const { job_id } = await startIngestJob()
+        const meta = await pollIngest(job_id)
+        setIndexReady(true)
+        setCorpusMode(meta?.corpus_mode ?? 'pdf')
+        setSourceFiles(meta?.source_files ?? [])
+        setCorpusVersion(meta?.corpus_version ?? null)
+        showToast(`Indexed ${meta?.num_chunks ?? ''} chunks`, 'ok')
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: `Uploaded and indexed ${results.map((r) => r.filename).join(', ')} (${meta?.num_chunks} chunks).`,
+          },
+        ])
+      } catch {
+        // Upload succeeded; live index build often OOMs on Render Free
+        showToast('PDF uploaded, but live indexing failed on Free tier. Use sample index or redeploy API with pre-built index.', 'error')
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content:
+              `Saved ${results.map((r) => r.filename).join(', ')}, but indexing timed out/OOM on Render Free. ` +
+              (health?.index_ready
+                ? 'Your pre-built sample index is still available for Ask.'
+                : 'Redeploy the API so the sample index is baked in, then check /api/health for index_ready:true.'),
+          },
+        ])
+      }
       await refreshHealth()
-      const chunks = meta?.num_chunks
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content:
-            results.length === 1
-              ? `Uploaded “${results[0].filename}” and indexed${chunks ? ` (${chunks} chunks)` : ''}. Demo sample is skipped while PDFs exist.`
-              : `Uploaded ${results.length} PDFs and indexed${chunks ? ` (${chunks} chunks)` : ''}.`,
-        },
-      ])
-      showToast(
-        results.length === 1
-          ? `Uploaded ${results[0].filename} and indexed`
-          : `Uploaded ${results.length} PDFs and indexed`,
-        'ok',
-      )
       setMode('ask')
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'Upload failed'
       const message =
         raw === 'Failed to fetch' || /network|fetch/i.test(raw)
-          ? 'Upload failed: API timed out or is waking up. Wait 1 minute, open the API health URL once, then try a smaller PDF (or Rebuild without upload first).'
+          ? 'Cannot reach Render API. Open https://nyaya-sahayak-api.onrender.com/api/health , wait until it loads, then retry. Skip large PDF uploads on Free — use the sample index.'
           : raw
       setError(message)
       showToast(message, 'error')
@@ -604,8 +620,9 @@ function App() {
                 {ingesting ? `Building… ${ingestPct}%` : 'Rebuild index'}
               </button>
               <p className="upload-hint">
-                Rebuild uses a real job status. While PDFs exist in <code>data/raw/</code>, demo text is
-                skipped.
+                <strong>Render Free tip:</strong> skip big Gazette PDFs (they time out). Redeploy the API so
+                the sample index is baked in, confirm <code>index_ready: true</code> on health, then use Ask.
+                Only upload PDFs under ~8 MB.
                 {corpusVersion ? (
                   <>
                     {' '}

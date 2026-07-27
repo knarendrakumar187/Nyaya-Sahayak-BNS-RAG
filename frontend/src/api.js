@@ -26,6 +26,22 @@ export async function getHealth() {
   return res.json()
 }
 
+/** Wake Render Free cold starts; retries for up to ~40s. */
+export async function wakeApi(attempts = 5, delayMs = 8000) {
+  let lastErr = new Error('API unreachable')
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await getHealth()
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err))
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, delayMs))
+      }
+    }
+  }
+  throw lastErr
+}
+
 export async function listDocuments() {
   const res = await fetch(apiUrl('/api/documents'))
   if (!res.ok) throw new Error(await parseError(res))
