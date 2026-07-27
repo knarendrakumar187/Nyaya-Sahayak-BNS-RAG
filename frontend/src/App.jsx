@@ -528,7 +528,7 @@ function App() {
               : indexReady
                 ? corpusMode === 'pdf'
                   ? `Ready · ${sourceFiles[0] || 'PDF'}${corpusVersion ? ` · ${corpusVersion}` : ''} · ${provider}`
-                  : `Ready · demo · ${provider}`
+                  : `Ready · sample text · ${provider}`
                 : 'Index not built yet'}
           </span>
         </div>
@@ -1001,7 +1001,7 @@ function App() {
             ? `Grounded on uploaded PDF(s): ${sourceFiles.join(', ') || 'data/raw'}${
                 corpusVersion ? ` · version ${corpusVersion}` : ''
               }. Not legal advice.`
-            : 'Currently on demo sample text. Upload a BNS PDF to switch to the real corpus. Not legal advice.'}
+            : 'Using built-in sample BNS text (not a full Gazette PDF). Not legal advice.'}
         </p>
       </div>
     </div>
