@@ -149,9 +149,12 @@ function App() {
   async function handleIngest() {
     setIngesting(true)
     setIngestPct(5)
-    setIngestMsg('Starting…')
+    setIngestMsg('Waking API…')
     setError(null)
     try {
+      // Wake Render Free (cold start) before starting the job
+      await getHealth()
+      setIngestMsg('Starting index job…')
       const { job_id } = await startIngestJob()
       const meta = await pollIngest(job_id)
       setIndexReady(true)
@@ -167,7 +170,11 @@ function App() {
       showToast(`Index built successfully (${meta?.num_chunks} chunks)`, 'ok')
       await refreshHealth()
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Ingest failed'
+      const raw = err instanceof Error ? err.message : 'Ingest failed'
+      const message =
+        raw === 'Failed to fetch' || /network|fetch/i.test(raw)
+          ? 'Rebuild failed on Render Free (timeout/memory). Redeploy the API so the pre-built sample index is included, then refresh /api/health — index_ready should become true without Rebuild.'
+          : raw
       setError(message)
       showToast(message, 'error')
     } finally {
