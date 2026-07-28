@@ -111,7 +111,13 @@ def load_documents(settings: Settings | None = None) -> tuple[list, dict]:
 
 def build_index(settings: Settings | None = None) -> dict:
     """Chunk documents, embed them, and persist a FAISS index."""
+    import gc
+
     settings = settings or get_settings()
+    # Free old FAISS from memory before a rebuild (important on Render Free 512 MB)
+    clear_index_cache()
+    gc.collect()
+
     docs, info = load_documents(settings)
     if not docs:
         raise FileNotFoundError(
@@ -119,10 +125,13 @@ def build_index(settings: Settings | None = None) -> dict:
             "or keep sample .txt files in data/sample/."
         )
 
-    # Slightly larger chunks for real statute PDFs; keep smaller on capped Free builds
+    # Smaller chunks on Free-capped PDF builds = fewer tokens per embed batch
     if info["corpus_mode"] == "sample":
         chunk_size = settings.chunk_size
         chunk_overlap = settings.chunk_overlap
+    elif settings.max_index_chunks and settings.max_index_chunks <= 80:
+        chunk_size = min(settings.chunk_size, 500)
+        chunk_overlap = min(settings.chunk_overlap, 60)
     else:
         chunk_size = max(settings.chunk_size, 800)
         chunk_overlap = max(settings.chunk_overlap, 120)
@@ -148,7 +157,7 @@ def build_index(settings: Settings | None = None) -> dict:
         chunk.metadata["source_name"] = Path(str(src)).name if src else "unknown"
 
     embeddings = get_embeddings(settings.embedding_model)
-    batch = max(8, settings.embed_batch_size)
+    batch = max(4, min(settings.embed_batch_size, 16))
     vectorstore = None
     for i in range(0, len(chunks), batch):
         part = chunks[i : i + batch]
@@ -156,13 +165,19 @@ def build_index(settings: Settings | None = None) -> dict:
             vectorstore = FAISS.from_documents(part, embeddings)
         else:
             vectorstore.add_documents(part)
+        gc.collect()
 
     if vectorstore is None:
         raise RuntimeError("No chunks to index.")
 
     settings.processed_dir.mkdir(parents=True, exist_ok=True)
+    if settings.index_path.exists():
+        import shutil
+
+        shutil.rmtree(settings.index_path, ignore_errors=True)
     vectorstore.save_local(str(settings.index_path))
     clear_index_cache()
+    gc.collect()
     _INDEX_CACHE["key"] = _index_cache_key(settings)
     _INDEX_CACHE["store"] = vectorstore
 

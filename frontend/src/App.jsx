@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  activateDemoPdf,
   askQuestionStream,
   compareLaws,
   deleteDocument,
   getApiBase,
   getHealth,
-  getIngestStatus,
   getHealthUrl,
+  getIngestStatus,
   listDocuments,
   lookupSection,
   runEval,
@@ -184,7 +185,9 @@ function App() {
       if (job.status === 'error') throw new Error(job.error || 'Ingest failed')
       await new Promise((r) => setTimeout(r, 1500))
     }
-    throw new Error('Ingest timed out — try a smaller PDF (first ~30 pages are indexed on Free).')
+    throw new Error(
+      'Ingest timed out on Free. Use “Load interview demo PDF” for a reliable interview demo.',
+    )
   }
 
   async function handleIngest() {
@@ -250,6 +253,44 @@ function App() {
     }
   }
 
+  async function handleDemoPdf() {
+    setUploading(true)
+    setIngesting(true)
+    setIngestPct(10)
+    setIngestMsg('Waking API…')
+    setError(null)
+    try {
+      await wakeApi(6, 8000)
+      setIngestPct(40)
+      setIngestMsg('Activating interview demo PDF (pre-built index)…')
+      const meta = await activateDemoPdf()
+      setIngestPct(100)
+      setIndexReady(true)
+      setCorpusMode(meta?.corpus_mode ?? 'pdf')
+      setSourceFiles(meta?.source_files ?? ['BNS_interview_excerpt.pdf'])
+      setCorpusVersion(meta?.corpus_version ?? null)
+      await refreshDocs()
+      await refreshHealth()
+      const msg = `Interview demo PDF ready — ${meta?.source_files?.[0] || 'BNS_interview_excerpt.pdf'} · ${meta?.num_chunks ?? '?'} chunks. Ask a question to show PDF-grounded RAG.`
+      showToast('Demo PDF index ready', 'ok')
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: msg }])
+      setMode('ask')
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : 'Demo PDF failed'
+      const message =
+        raw === 'Failed to fetch' || /network|fetch|Cannot reach/i.test(raw)
+          ? `API busy or restarting. Open ${getHealthUrl()}, wait for JSON, then click “Load interview demo PDF” again.`
+          : raw
+      setError(message)
+      showToast(message, 'error')
+    } finally {
+      setUploading(false)
+      setIngesting(false)
+      setIngestPct(0)
+      setIngestMsg('')
+    }
+  }
+
   async function handleFiles(files) {
     if (!files || files.length === 0) return
     const pdfs = Array.from(files).filter((f) => f.name.toLowerCase().endsWith('.pdf'))
@@ -258,9 +299,9 @@ function App() {
       return
     }
 
-    const tooBig = pdfs.find((f) => f.size > 15 * 1024 * 1024)
+    const tooBig = pdfs.find((f) => f.size > 8 * 1024 * 1024)
     if (tooBig) {
-      const msg = `“${tooBig.name}” is over 15 MB. On Render Free, use a smaller PDF (or split the Gazette). We only index the first ~30 pages anyway.`
+      const msg = `“${tooBig.name}” is over 8 MB. For interviews, use “Load interview demo PDF” (instant). Custom Gazettes often crash Render Free.`
       setError(msg)
       showToast(msg, 'error')
       return
@@ -312,7 +353,7 @@ function App() {
       const raw = err instanceof Error ? err.message : 'Upload failed'
       const message =
         raw === 'Failed to fetch' || /network|fetch/i.test(raw)
-          ? `Cannot reach API at ${getApiBase()}. Open ${getHealthUrl()} to wake it, wait for JSON, then retry upload with a PDF under 15 MB.`
+          ? `Custom PDF indexing often restarts Render Free (512 MB). Use “Load interview demo PDF” instead — it activates a pre-built PDF index instantly.`
           : raw
       setError(message)
       showToast(message, 'error')
@@ -641,7 +682,7 @@ function App() {
               <span>
                 {uploading
                   ? 'Indexing can take about 1 minute — please keep this tab open'
-                  : 'or click to browse · PDF only · max 40 MB'}
+                  : 'or click to browse · for live interviews prefer the demo button below'}
               </span>
               <input
                 ref={fileInputRef}
@@ -656,6 +697,14 @@ function App() {
             <div className="upload-actions">
               <button
                 type="button"
+                className="action-btn primary-action"
+                onClick={() => void handleDemoPdf()}
+                disabled={ingesting || uploading}
+              >
+                {ingesting ? `Loading… ${ingestPct}%` : 'Load interview demo PDF'}
+              </button>
+              <button
+                type="button"
                 className="action-btn"
                 onClick={() => void handleIngest()}
                 disabled={ingesting || uploading}
@@ -663,13 +712,15 @@ function App() {
                 {ingesting ? `Building… ${ingestPct}%` : 'Rebuild index'}
               </button>
               <p className="upload-hint">
-                <strong>Upload PDF:</strong> wake the API first (
+                <strong>Interview tip:</strong> click <strong>Load interview demo PDF</strong> — it
+                switches to a real PDF corpus using a pre-built index (works on Free). Nav will show
+                the PDF name instead of sample text. Custom Gazette uploads may still crash Free
+                RAM; prefer the demo button live.
+                <br />
+                API: <code>{getApiBase()}</code> ·{' '}
                 <a href={getHealthUrl()} target="_blank" rel="noreferrer">
                   /api/health
                 </a>
-                ), then upload a file under 15 MB. On Render Free we index about the{' '}
-                <strong>first 30 pages</strong> only so it can finish.
-                API: <code>{getApiBase()}</code>
               </p>
             </div>
 

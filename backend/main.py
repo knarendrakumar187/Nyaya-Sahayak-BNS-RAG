@@ -28,7 +28,7 @@ from backend.security import require_api_key
 
 MAX_UPLOAD_BYTES = 40 * 1024 * 1024
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 
 limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
@@ -153,6 +153,24 @@ def ingest_async(request: Request, _: None = Depends(require_api_key)):
     from backend.jobs import start_ingest_job
 
     return {"ok": True, "job_id": start_ingest_job()}
+
+
+@app.post("/api/demo/pdf")
+@limiter.limit("20/minute")
+def activate_demo_pdf(request: Request, _: None = Depends(require_api_key)):
+    """
+    Interview-ready: activate bundled BNS excerpt PDF using a pre-built FAISS index.
+    Does not run embeddings at runtime (safe on Render Free).
+    """
+    from backend.demo_corpus import activate_interview_demo_pdf
+
+    try:
+        meta = activate_interview_demo_pdf()
+        return {"ok": True, **meta}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Demo PDF activate failed: {exc}") from exc
 
 
 @app.get("/api/ingest/status/{job_id}")

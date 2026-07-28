@@ -105,6 +105,15 @@ export async function wakeApi(attempts = 15, delayMs = 8000) {
   throw lastErr
 }
 
+export async function activateDemoPdf() {
+  const res = await apiFetch('/api/demo/pdf', {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
 export async function listDocuments() {
   const res = await apiFetch('/api/documents')
   if (!res.ok) throw new Error(await parseError(res))

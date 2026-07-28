@@ -88,6 +88,18 @@ Browser ──► Vercel (React/Vite SPA)
 
 ---
 
+## Interview demo (PDF on Free)
+
+Custom Gazette uploads often **OOM** on Render Free (512 MB). For interviews:
+
+1. Open **Upload PDF**
+2. Click **Load interview demo PDF** (uses a pre-built FAISS index — no live embedding)
+3. Nav shows the PDF name → Ask a question
+
+That proves the PDF corpus path without relying on Free-tier RAM.
+
+---
+
 ## Option B — Railway (all-in-one)
 
 Uses root `Dockerfile` + `railway.toml`.

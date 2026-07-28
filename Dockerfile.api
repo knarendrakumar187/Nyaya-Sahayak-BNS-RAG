@@ -16,14 +16,15 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY backend ./backend
 COPY data ./data
+COPY scripts ./scripts
 
-# Pre-build sample FAISS index at IMAGE BUILD time (Render build has more RAM
-# than Free runtime). Avoids "Failed to fetch" on live Rebuild/ingest.
+# Pre-build sample + interview demo PDF indexes at IMAGE BUILD time
+# (Render build has more RAM than Free runtime). Demo PDF activate = no live embed.
 ENV HF_HOME=/tmp/hf
 ENV TRANSFORMERS_CACHE=/tmp/hf
 ENV TOKENIZERS_PARALLELISM=false
 ENV OMP_NUM_THREADS=1
-RUN python -c "from backend.ingest import build_index; print(build_index())"
+RUN python scripts/build_demo_pdf_index.py
 
 ENV PYTHONUNBUFFERED=1
 ENV SERVE_FRONTEND=false

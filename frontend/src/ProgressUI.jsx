@@ -14,13 +14,13 @@ const JOBS = {
   },
   upload: {
     title: 'Uploading & indexing PDF',
-    hint: 'Upload is quick; indexing usually takes about 1 minute.',
+    hint: 'Prefer “Load interview demo PDF” on Free — custom embeds can take minutes or restart the API.',
     steps: [
       { afterSec: 0, label: 'Uploading PDF to server…', pct: 12 },
       { afterSec: 3, label: 'Reading PDF pages…', pct: 28 },
-      { afterSec: 10, label: 'Creating embeddings…', pct: 60 },
-      { afterSec: 35, label: 'Saving search index…', pct: 85 },
-      { afterSec: 50, label: 'Almost ready…', pct: 94 },
+      { afterSec: 10, label: 'Creating embeddings (slow on Free)…', pct: 60 },
+      { afterSec: 45, label: 'Saving search index…', pct: 85 },
+      { afterSec: 90, label: 'Still working — Free RAM is limited…', pct: 92 },
     ],
   },
   ask: {

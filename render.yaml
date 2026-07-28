@@ -39,9 +39,10 @@ services:
         value: "1"
       - key: HF_HOME
         value: /tmp/hf
+      # Tight caps if someone still tries a live custom-PDF rebuild on Free
       - key: MAX_PDF_PAGES
-        value: "30"
+        value: "8"
       - key: MAX_INDEX_CHUNKS
-        value: "150"
+        value: "48"
       - key: EMBED_BATCH_SIZE
-        value: "16"
+        value: "4"
