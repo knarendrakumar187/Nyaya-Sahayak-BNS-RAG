@@ -21,3 +21,5 @@ frontend/dist/
 frontend/.env
 frontend/.env.local
 *.log
+.coverage
+htmlcov/
