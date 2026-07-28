@@ -6,7 +6,7 @@ import {
   getApiBase,
   getHealth,
   getIngestStatus,
-  getRenderHealthUrl,
+  getHealthUrl,
   listDocuments,
   lookupSection,
   runEval,
@@ -312,7 +312,7 @@ function App() {
       const raw = err instanceof Error ? err.message : 'Upload failed'
       const message =
         raw === 'Failed to fetch' || /network|fetch/i.test(raw)
-          ? `Cannot reach API at ${getApiBase()}. Open https://nyaya-sahayak-api.onrender.com/api/health to wake it, wait for JSON, then retry upload with a PDF under 15 MB.`
+          ? `Cannot reach API at ${getApiBase()}. Open ${getHealthUrl()} to wake it, wait for JSON, then retry upload with a PDF under 15 MB.`
           : raw
       setError(message)
       showToast(message, 'error')
@@ -597,7 +597,7 @@ function App() {
                 {apiOnline === true ? 'Connected' : apiOnline === false ? 'Offline / waking' : 'Checking…'}
               </span>
               <div className="api-status-actions">
-                <a href={getRenderHealthUrl()} target="_blank" rel="noreferrer">
+                <a href={getHealthUrl()} target="_blank" rel="noreferrer">
                   Open health
                 </a>
                 <button type="button" className="action-btn" onClick={() => void testApiConnection()}>
@@ -664,7 +664,7 @@ function App() {
               </button>
               <p className="upload-hint">
                 <strong>Upload PDF:</strong> wake the API first (
-                <a href="https://nyaya-sahayak-api.onrender.com/api/health" target="_blank" rel="noreferrer">
+                <a href={getHealthUrl()} target="_blank" rel="noreferrer">
                   /api/health
                 </a>
                 ), then upload a file under 15 MB. On Render Free we index about the{' '}

@@ -1,14 +1,36 @@
-const RENDER_API = 'https://nyaya-sahayak-api.onrender.com'
+// Production fallback if Vercel env is missing (same name as render.yaml service).
+const DEFAULT_PROD_API = 'https://nyaya-sahayak-api.onrender.com'
 
-// Prefer explicit env; otherwise call Render directly (avoids Vercel SSO breaking /api proxy).
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || RENDER_API).replace(/\/$/, '')
-
-export function getApiBase() {
-  return API_BASE
+/**
+ * Resolve API origin:
+ * - Explicit VITE_API_BASE_URL always wins (set this on Vercel after Render deploy).
+ * - Local `npm run dev`: relative URLs so Vite proxies /api → localhost:8000.
+ * - Production build without env: hardcoded Render URL.
+ */
+function resolveApiBase() {
+  const raw = import.meta.env.VITE_API_BASE_URL
+  if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
+    return String(raw).replace(/\/$/, '')
+  }
+  if (import.meta.env.DEV) return ''
+  return DEFAULT_PROD_API
 }
 
+const API_BASE = resolveApiBase()
+
+export function getApiBase() {
+  return API_BASE || '(same origin / Vite proxy)'
+}
+
+/** Health URL for wake / “Open health” links. */
+export function getHealthUrl() {
+  const base = API_BASE || DEFAULT_PROD_API
+  return `${base}/api/health`
+}
+
+/** @deprecated use getHealthUrl */
 export function getRenderHealthUrl() {
-  return `${RENDER_API}/api/health`
+  return getHealthUrl()
 }
 
 function apiUrl(path) {
@@ -42,6 +64,7 @@ async function fetchWithTimeout(url, options = {}, ms = 90000) {
 }
 
 async function apiFetch(path, options = {}) {
+  const health = getHealthUrl()
   try {
     return await fetchWithTimeout(apiUrl(path), options)
   } catch (err) {
@@ -49,11 +72,11 @@ async function apiFetch(path, options = {}) {
     const msg = err instanceof Error ? err.message : 'network error'
     if (name === 'AbortError') {
       throw new Error(
-        `Request timed out talking to ${API_BASE}. Render Free may still be starting — open ${RENDER_API}/api/health, wait for JSON, then retry.`,
+        `Request timed out. Render Free may still be starting — open ${health}, wait for JSON, then retry.`,
       )
     }
     throw new Error(
-      `Cannot reach ${API_BASE}. Open ${RENDER_API}/api/health in a new tab, wait for JSON, come back and retry. (${msg})`,
+      `Cannot reach API. Open ${health} in a new tab, wait for JSON, then retry. (${msg})`,
     )
   }
 }
@@ -64,12 +87,12 @@ export async function getHealth() {
   return res.json()
 }
 
-/** Wake Render Free directly (can take up to ~2 min when asleep). */
+/** Wake Render Free (can take up to ~2 min when asleep). */
 export async function wakeApi(attempts = 15, delayMs = 8000) {
   let lastErr = new Error('API unreachable')
   for (let i = 0; i < attempts; i++) {
     try {
-      const res = await fetchWithTimeout(`${RENDER_API}/api/health`, {}, 90000)
+      const res = await fetchWithTimeout(getHealthUrl(), {}, 90000)
       if (!res.ok) throw new Error(await parseError(res))
       return res.json()
     } catch (err) {
@@ -121,7 +144,7 @@ function bytesToBase64(bytes) {
 
 export async function uploadPdfChunked(file, { onProgress } = {}) {
   const report = (pct, message) => onProgress?.({ pct, message })
-  report(2, 'Waking Render…')
+  report(2, 'Waking API…')
   await wakeApi()
   report(5, 'Starting chunked upload…')
 

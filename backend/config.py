@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     openai_api_key: str = ""
     llm_provider: str = "gemini"  # gemini | openai
-    gemini_model: str = "gemini-3.1-flash-lite"
+    gemini_model: str = "gemini-2.0-flash-lite"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     # Comma-separated origins, or "*" for any (credentials disabled when "*")
     cors_origins: str = "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173"
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # Production controls
     api_key: str = ""  # If set, required for upload/ingest/delete via X-API-Key
     rate_limit: str = "30/minute"
-    enable_auth: bool = True
+    enable_auth: bool = False  # true + api_key locks upload/ingest/delete
     # Serve Vite build from FastAPI when frontend/dist exists
     serve_frontend: bool = True
 

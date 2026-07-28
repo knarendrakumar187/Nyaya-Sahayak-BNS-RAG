@@ -1,6 +1,6 @@
 # Render Blueprint — Free FastAPI backend only
-# Frontend: deploy separately on Vercel
-# https://dashboard.render.com → New → Blueprint
+# Frontend: deploy separately on Vercel (see DEPLOYMENT.md)
+# Dashboard: New → Blueprint → connect this repo
 
 services:
   - type: web
@@ -11,20 +11,24 @@ services:
     healthCheckPath: /api/health
     envVars:
       - key: GOOGLE_API_KEY
-        sync: false
+        sync: false          # REQUIRED — set in Render dashboard (never commit)
       - key: LLM_PROVIDER
         value: gemini
       - key: GEMINI_MODEL
-        value: gemini-3.1-flash-lite
+        value: gemini-2.0-flash-lite
       - key: SERVE_FRONTEND
         value: "false"
-      # Allow Vercel UI (and local). Tighten to your exact Vercel URL later if you want.
+      # After Vercel deploy, optionally tighten to: https://your-app.vercel.app
       - key: CORS_ORIGINS
         value: "*"
+      # false = uploads work without pasting a key (good for first deploy).
+      # Set true + API_KEY later if you want to lock upload/ingest/delete.
       - key: ENABLE_AUTH
-        value: "true"
+        value: "false"
       - key: API_KEY
         sync: false
+      - key: RATE_LIMIT
+        value: "30/minute"
       - key: TOKENIZERS_PARALLELISM
         value: "false"
       - key: OMP_NUM_THREADS
@@ -35,7 +39,6 @@ services:
         value: "1"
       - key: HF_HOME
         value: /tmp/hf
-      # Memory-safe PDF indexing on Free (first N pages / chunks only)
       - key: MAX_PDF_PAGES
         value: "30"
       - key: MAX_INDEX_CHUNKS

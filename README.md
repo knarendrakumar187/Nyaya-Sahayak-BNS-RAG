@@ -2,7 +2,9 @@
 
 **RAG bot for Bharatiya Nyaya Sanhita (BNS)** — ask questions about India’s new criminal laws, grounded in retrieved text, plus **IPC ↔ BNS Compare**.
 
-Stack: **React (Vite + JS) + FastAPI + LangChain + FAISS + Gemini/OpenAI**
+Stack: **React (Vite + JS) + FastAPI + LangChain + FAISS + Gemini 2.0 / OpenAI**
+
+![Version](https://img.shields.io/badge/version-1.3.0-blue) ![Python](https://img.shields.io/badge/python-3.11-green) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -55,54 +57,22 @@ Open http://localhost:5173 — Vite proxies `/api` → `:8000`.
 
 ## Deploy (free): Vercel UI + Render API
 
-Best free setup for this project:
+Full step-by-step (including **fresh redeploy**): see **[DEPLOYMENT.md](./DEPLOYMENT.md)**.
 
-| Part | Host | Why |
-|------|------|-----|
-| **Frontend** (React/Vite) | **Vercel** | Free, fast, always on |
-| **Backend** (FastAPI + FAISS) | **Render Free** | Free Python/Docker; sleeps after idle |
+| Part | Host |
+|------|------|
+| Frontend | **Vercel** |
+| Backend | **Render Free** (`Dockerfile.api` + `render.yaml`) |
 
-### Step 1 — Deploy API on Render
+**Minimum to go live:**
 
-1. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**  
-2. Connect **Nyaya-Sahayak-BNS-RAG** (uses `render.yaml` + `Dockerfile.api`)  
-3. Set secret **`GOOGLE_API_KEY`**  
-4. Deploy → copy your API URL, e.g. `https://nyaya-sahayak-api.onrender.com`  
-5. Check `https://YOUR-API.onrender.com/api/health`
+1. Push this repo to GitHub  
+2. Render Blueprint → set **`GOOGLE_API_KEY`** → wait for `/api/health` JSON  
+3. Vercel import → set **`VITE_API_BASE_URL=https://YOUR-API.onrender.com`** → deploy  
+4. Disable Vercel Deployment Protection / SSO for Production  
+5. Open app → **Test connection** → Ask a question (sample index works without PDF)
 
-First wake after idle can take ~1 minute (Free spins down).
-
-### Step 2 — Deploy UI on Vercel
-
-1. [vercel.com/new](https://vercel.com/new) → import **Nyaya-Sahayak-BNS-RAG**  
-2. Root `vercel.json` builds the `frontend/` folder  
-3. **Environment Variables** (Production + Preview):
-
-```
-VITE_API_BASE_URL=https://YOUR-API.onrender.com
-```
-
-(no trailing slash)
-
-4. Deploy → open the Vercel URL  
-5. In the app: **Rebuild index** once (API must be awake)
-
-### Local still works
-
-```bash
-# API
-uvicorn backend.main:app --reload --port 8000
-
-# UI (proxies /api → :8000 — no VITE_API_BASE_URL needed)
-cd frontend && npm run dev
-```
-
-### Notes
-
-- Render Free = **512 MB**; big PDF ingest may OOM — start with sample corpus  
-- After redeploy, rebuild the index again (no free persistent disk)  
-- Optional: set Render `CORS_ORIGINS` to your exact `https://….vercel.app` URL  
-- **Do not commit `.env`**
+**Expect:** Render Free cold start ~30–90s; PDFs prefer **&lt;15 MB** (first ~30 pages only).
 
 ---
 
@@ -157,6 +127,7 @@ Interactive docs: `/docs`
 
 - [LEARNING.md](./LEARNING.md) — embeddings, chunking, FAISS, RAG  
 - [INTERVIEW.md](./INTERVIEW.md) — talking points  
+- [DEPLOYMENT.md](./DEPLOYMENT.md) — step-by-step deploy guide (Render + Vercel)  
 
 ## Resume bullets
 

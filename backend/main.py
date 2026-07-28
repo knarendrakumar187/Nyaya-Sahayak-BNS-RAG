@@ -28,7 +28,7 @@ from backend.security import require_api_key
 
 MAX_UPLOAD_BYTES = 40 * 1024 * 1024
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.3.0"
 
 limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
